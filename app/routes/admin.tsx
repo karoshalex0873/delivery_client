@@ -43,23 +43,8 @@ const Admin = () => {
       <section className="panel">
         <div className="panel-header">
           <span>Operations</span>
-          <h1 className="hero-title">System overview and live insights.</h1>
-          <p className="muted">Monitor fulfillment, customer activity, and rider health.</p>
-        </div>
-
-        <div className="stats">
-          <div className="stat">
-            <strong>128</strong>
-            <span>Orders processed today</span>
-          </div>
-          <div className="stat">
-            <strong>92%</strong>
-            <span>On-time delivery rate</span>
-          </div>
-          <div className="stat">
-            <strong>14</strong>
-            <span>Active restaurants</span>
-          </div>
+          <h1>Admin dashboard</h1>
+          <p className="muted">Basic overview of core data.</p>
         </div>
 
         <div className="card-grid">

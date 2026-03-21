@@ -60,7 +60,7 @@ const Customer = () => {
       <section className="panel">
         <div className="panel-header">
           <span>Discover</span>
-          <h1 className="hero-title">Welcome back, {customer.firstName}.</h1>
+          <h1>Welcome back, {customer.firstName}.</h1>
           <p className="muted">Role: {role.name}. Track your latest order and menu picks.</p>
         </div>
 
@@ -93,7 +93,7 @@ const Customer = () => {
                 return (
                   <div className="list-item" key={item.id}>
                     <div>{menuItem?.name}</div>
-                    <span>{item.quantity} x ₦{item.price}</span>
+                    <span>{item.quantity} x ksh.{item.price}</span>
                   </div>
                 );
               })}

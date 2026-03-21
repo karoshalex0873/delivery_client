@@ -27,23 +27,8 @@ const Rider = () => {
       <section className="panel">
         <div className="panel-header">
           <span>On duty</span>
-          <h1 className="hero-title">{rider.name}</h1>
+          <h1>{rider.name}</h1>
           <p className="muted">{rider.address} • {rider.phoneNumber}</p>
-        </div>
-
-        <div className="stats">
-          <div className="stat">
-            <strong>3</strong>
-            <span>Active pickups nearby</span>
-          </div>
-          <div className="stat">
-            <strong>18 km</strong>
-            <span>Total distance today</span>
-          </div>
-          <div className="stat">
-            <strong>4.9</strong>
-            <span>Customer rating</span>
-          </div>
         </div>
 
         <div className="card-grid">

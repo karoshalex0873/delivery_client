@@ -41,23 +41,8 @@ const Restaurant = () => {
       <section className="panel">
         <div className="panel-header">
           <span>Kitchen view</span>
-          <h1 className="hero-title">{restaurant.name}</h1>
+          <h1>{restaurant.name}</h1>
           <p className="muted">{restaurant.address} • {restaurant.phoneNumber}</p>
-        </div>
-
-        <div className="stats">
-          <div className="stat">
-            <strong>21</strong>
-            <span>Orders in queue</span>
-          </div>
-          <div className="stat">
-            <strong>7 min</strong>
-            <span>Average prep time</span>
-          </div>
-          <div className="stat">
-            <strong>3</strong>
-            <span>Riders arriving</span>
-          </div>
         </div>
 
         <div className="card-grid">

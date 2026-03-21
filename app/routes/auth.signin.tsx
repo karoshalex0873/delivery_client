@@ -1,13 +1,13 @@
 const SignIn = () => {
   return (
     <section className="auth-card">
-      <h2 className="hero-title">Sign in</h2>
-      <p className="muted">Welcome back. Enter your details to continue.</p>
+      <h2>Sign in</h2>
+      <p className="muted">Enter your phone number and password.</p>
 
       <form className="form-grid">
         <label className="input">
-          Email address
-          <input type="email" name="email" placeholder="name@company.com" />
+          Phone number
+          <input type="tel" name="phone" placeholder="0803 000 0000" />
         </label>
         <label className="input">
           Password
