@@ -1,6 +1,13 @@
 import { Link } from "react-router";
+import { useRoleGuard } from "~/components/role-guard";
 
 const Restaurant = () => {
+  const authorized = useRoleGuard(3);
+
+  if (!authorized) {
+    return null;
+  }
+
   const owner = {
     id: "usr_rest_001",
     firstName: "Ngozi",

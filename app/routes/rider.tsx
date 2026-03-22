@@ -1,6 +1,13 @@
 import { Link } from "react-router";
+import { useRoleGuard } from "~/components/role-guard";
 
 const Rider = () => {
+  const authorized = useRoleGuard(2);
+
+  if (!authorized) {
+    return null;
+  }
+
   const rider = {
     id: "rider_001",
     name: "Ibrahim Musa",

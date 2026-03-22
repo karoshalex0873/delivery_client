@@ -1,6 +1,13 @@
 import { Link } from "react-router";
+import { useRoleGuard } from "~/components/role-guard";
 
 const Admin = () => {
+  const authorized = useRoleGuard(4);
+
+  if (!authorized) {
+    return null;
+  }
+
   const roles = [
     { id: 1, name: "customer" },
     { id: 2, name: "rider" },
