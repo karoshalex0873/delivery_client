@@ -1,101 +1,214 @@
-import { Link } from "react-router";
-import { useRoleGuard } from "~/components/role-guard";
+import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import { Link, Outlet, useLocation, useOutletContext } from "react-router";
+import {
+  ChevronLeft,
+  ChevronRight,
+  ClipboardList,
+  Home,
+  LayoutDashboard,
+  Utensils,
+} from "lucide-react";
+import { useRoleGuard } from "../components/role-guard";
+import {
+  getMyMenuItems,
+  getMyRestaurant,
+  type MenuItemRecord,
+  type RestaurantRecord,
+} from "../services/restaurant";
 
-const Restaurant = () => {
+export type RestaurantLayoutContext = {
+  restaurant: RestaurantRecord | null;
+  menuItems: MenuItemRecord[];
+  setRestaurant: Dispatch<SetStateAction<RestaurantRecord | null>>;
+  setMenuItems: Dispatch<SetStateAction<MenuItemRecord[]>>;
+  loading: boolean;
+  error: string | null;
+  menuError: string | null;
+  setMenuError: Dispatch<SetStateAction<string | null>>;
+};
+
+export const useRestaurantLayout = () => useOutletContext<RestaurantLayoutContext>();
+
+const RestaurantLayout = () => {
   const authorized = useRoleGuard(3);
+  const location = useLocation();
+  const [restaurant, setRestaurant] = useState<RestaurantRecord | null>(null);
+  const [menuItems, setMenuItems] = useState<MenuItemRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [menuError, setMenuError] = useState<string | null>(null);
+  const [isCollapsed, setIsCollapsed] = useState(false);
+
+  useEffect(() => {
+    if (!authorized) {
+      return;
+    }
+
+    let isMounted = true;
+
+    const loadWorkspace = async () => {
+      setLoading(true);
+
+      try {
+        const restaurantData = await getMyRestaurant();
+        if (!isMounted) {
+          return;
+        }
+
+        setRestaurant(restaurantData);
+        setError(null);
+
+        try {
+          const menuData = await getMyMenuItems();
+          if (!isMounted) {
+            return;
+          }
+
+          setMenuItems(menuData);
+          setMenuError(null);
+        } catch (menuLoadError) {
+          if (!isMounted) {
+            return;
+          }
+
+          setMenuError(menuLoadError instanceof Error ? menuLoadError.message : "Failed to load menu items");
+        }
+      } catch (loadError) {
+        if (!isMounted) {
+          return;
+        }
+
+        const message = loadError instanceof Error ? loadError.message : "Failed to load restaurant";
+
+        if (message.toLowerCase().includes("not found")) {
+          setRestaurant(null);
+          setMenuItems([]);
+          setError(null);
+          setMenuError(null);
+        } else {
+          setError(message);
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void loadWorkspace();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [authorized]);
+
+  const urls = {
+    dashboard: "/restaurant",
+    menu: "/restaurant/menu",
+    orders: "/restaurant/orders",
+  };
+
+  const navItemClass = (href: string) => {
+    const isActive = location.pathname === href;
+    return `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200 ${
+      isActive
+        ? "bg-slate-900 text-white shadow-sm"
+        : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+    }`;
+  };
 
   if (!authorized) {
     return null;
   }
 
-  const owner = {
-    id: "usr_rest_001",
-    firstName: "Ngozi",
-    lastName: "Eze",
-    phoneNumber: "08030000003",
-    roleId: 3,
-  };
-
-  const restaurant = {
-    id: "res_001",
-    name: "Sunrise Grill",
-    address: "12 Allen Ave, Ikeja",
-    phoneNumber: "08030000101",
-    userId: owner.id,
-  };
-
-  const menuItems = [
-    { id: "menu_001", name: "Jollof Rice", price: 2500, restaurantId: restaurant.id },
-    { id: "menu_002", name: "Grilled Chicken", price: 4200, restaurantId: restaurant.id },
-    { id: "menu_003", name: "Fried Plantain", price: 1500, restaurantId: restaurant.id },
-  ];
-
-  const orders = [
-    { id: "ord_1001", status: "preparing", totalPrice: 8200, userId: "usr_001", restaurantId: restaurant.id, riderId: "rider_001" },
-    { id: "ord_1002", status: "ready", totalPrice: 5800, userId: "usr_002", restaurantId: restaurant.id, riderId: null },
-  ];
-
   return (
-    <div className="page">
-      <header className="page-header">
-        <div className="brand">Restaurant Studio</div>
-        <nav className="nav-pills">
-          <Link className="pill" to="/">Home</Link>
-          <Link className="pill" to="/auth/signin">Staff login</Link>
-        </nav>
+    <div className="min-h-screen bg-[#f8fafc] text-slate-900 antialiased">
+      <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/80 px-6 py-3 backdrop-blur-md">
+        <div className="flex w-full items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900 text-white font-bold">
+              D
+            </div>
+            <div>
+              <h1 className="text-sm font-bold leading-none">Restaurant Studio</h1>
+              <span className="text-[10px] uppercase tracking-wider text-slate-400">
+                Kitchen Workspace
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4">
+            <div className="hidden text-right md:block">
+              <p className="text-sm font-medium">{restaurant?.name ?? "Restaurant User"}</p>
+              <p className="text-xs text-slate-500">{restaurant?.phoneNumber ?? "Owner access"}</p>
+            </div>
+            <div className="h-10 w-10 rounded-full border-2 border-white bg-slate-200 shadow-sm" />
+          </div>
+        </div>
       </header>
 
-      <section className="panel">
-        <div className="panel-header">
-          <span>Kitchen view</span>
-          <h1>{restaurant.name}</h1>
-          <p className="muted">{restaurant.address} • {restaurant.phoneNumber}</p>
-        </div>
+      <div className="flex w-full gap-6 p-6">
+        <aside className={`flex flex-col transition-all duration-300 ease-in-out ${isCollapsed ? "w-16" : "w-64"}`}>
+          <div className="sticky top-24 space-y-1">
+            <button
+              onClick={() => setIsCollapsed(!isCollapsed)}
+              className="mb-4 flex w-full items-center justify-center rounded-lg border border-slate-200 bg-white p-2 hover:bg-slate-50"
+            >
+              {isCollapsed ? (
+                <ChevronRight size={18} />
+              ) : (
+                <div className="flex items-center gap-2 text-xs font-semibold">
+                  <ChevronLeft size={16} />
+                  Collapse Menu
+                </div>
+              )}
+            </button>
 
-        <div className="card-grid">
-          <div className="card">
-            <h3>Menu items</h3>
-            <div className="list">
-              {menuItems.map((item) => (
-                <div className="list-item" key={item.id}>
-                  <div>{item.name}</div>
-                  <span>₦{item.price}</span>
-                </div>
-              ))}
-            </div>
+            <nav className="space-y-1">
+              <Link className={navItemClass(urls.dashboard)} to={urls.dashboard}>
+                <LayoutDashboard size={18} />
+                {!isCollapsed && <span>Dashboard</span>}
+              </Link>
+              <Link className={navItemClass(urls.menu)} to={urls.menu}>
+                <Utensils size={18} />
+                {!isCollapsed && <span>Menu</span>}
+              </Link>
+              <Link className={navItemClass(urls.orders)} to={urls.orders}>
+                <ClipboardList size={18} />
+                {!isCollapsed && <span>Orders</span>}
+              </Link>
+              <div className="my-4 border-t border-slate-200 pt-4" />
+
+              <Link
+                className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-500 hover:bg-slate-100"
+                to="/"
+              >
+                <Home size={18} />
+                {!isCollapsed && <span>Back to Home</span>}
+              </Link>
+            </nav>
           </div>
-          <div className="card">
-            <h3>Orders</h3>
-            <div className="list">
-              {orders.map((order) => (
-                <div className="list-item" key={order.id}>
-                  <div>{order.id}</div>
-                  <span>{order.status}</span>
-                </div>
-              ))}
-            </div>
+        </aside>
+
+        <main className="min-w-0 flex-1">
+          <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm ring-1 ring-slate-900/5">
+            <Outlet
+              context={{
+                restaurant,
+                menuItems,
+                setRestaurant,
+                setMenuItems,
+                loading,
+                error,
+                menuError,
+                setMenuError,
+              }}
+            />
           </div>
-          <div className="card">
-            <h3>Owner</h3>
-            <div className="list">
-              <div className="list-item">
-                <div>Name</div>
-                <span>{owner.firstName} {owner.lastName}</span>
-              </div>
-              <div className="list-item">
-                <div>Phone</div>
-                <span>{owner.phoneNumber}</span>
-              </div>
-              <div className="list-item">
-                <div>Role ID</div>
-                <span>{owner.roleId}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+        </main>
+      </div>
     </div>
   );
 };
 
-export default Restaurant;
+export default RestaurantLayout;

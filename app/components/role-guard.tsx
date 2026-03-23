@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { clearAccessToken, getAccessToken, getRoleIdFromToken, isTokenExpired } from '~/services/auth'
@@ -48,9 +47,21 @@ const canAccessRoleRoute = (requiredRoleId: number) => {
 
 export const useRoleGuard = (requiredRoleId: number) => {
   const navigate = useNavigate()
-  const [guardState] = useState(() => canAccessRoleRoute(requiredRoleId))
+  const [guardState, setGuardState] = useState<{
+    authorized: boolean
+    redirectTo: string
+    shouldClearToken: boolean
+  } | null>(null)
 
   useEffect(() => {
+    setGuardState(canAccessRoleRoute(requiredRoleId))
+  }, [requiredRoleId])
+
+  useEffect(() => {
+    if (!guardState) {
+      return
+    }
+
     if (!guardState.authorized) {
       if (guardState.shouldClearToken) {
         clearAccessToken()
@@ -59,5 +70,5 @@ export const useRoleGuard = (requiredRoleId: number) => {
     }
   }, [guardState, navigate])
 
-  return guardState.authorized
+  return guardState?.authorized ?? false
 }

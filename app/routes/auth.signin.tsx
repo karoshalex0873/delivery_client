@@ -9,6 +9,8 @@ const roleRedirects: Record<number, string> = {
   4: "/admin",
 };
 
+const kenyaPhonePattern = /^\+254\d{9}$/;
+
 const SignIn = () => {
   const navigate = useNavigate();
   // set up  form state for the sign-in form (e.g., phone number, password)
@@ -31,10 +33,23 @@ const SignIn = () => {
     setError(null);
     setStatus(null);
 
+    const phoneNumber = form.phoneNumber.trim();
+    const password = form.password.trim();
+
+    if (!kenyaPhonePattern.test(phoneNumber)) {
+      setError("Phone number must be in the format +254XXXXXXXXX");
+      return;
+    }
+
+    if (!password) {
+      setError("Password is required");
+      return;
+    }
+
     try {
       const data = await signIn({
-        phoneNumber: form.phoneNumber,
-        password: form.password,
+        phoneNumber,
+        password,
       });
 
       const token = data?.accessToken ?? data?.token;
@@ -76,6 +91,7 @@ const SignIn = () => {
             placeholder="+254XXXXXXXXX"
             value={form.phoneNumber}
             onChange={handleChange}
+            required
           />
         </label>
         <label className="input">
@@ -86,6 +102,7 @@ const SignIn = () => {
             placeholder="Your password"
             value={form.password}
             onChange={handleChange}
+            required
           />
         </label>
         <button className="button" type="submit">Continue</button>

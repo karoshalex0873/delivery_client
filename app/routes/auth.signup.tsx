@@ -32,14 +32,25 @@ const SignUp = () => {
     // log the form data for debugging purposes
     console.log("Submitting form with data:", form);
 
+    if (form.password !== form.confirmPassword) {
+      setError("Passwords do not match");
+      return;
+    }
+
     try {
-      // call the signUp function from the auth service with the form data, converting roleId to a number and handling optional confirmPassword
+      // Format phone number: replace leading '0' with '+254'
+      const formattedPhone = form.phoneNumber.startsWith("0") 
+        ? `+254${form.phoneNumber.slice(1)}` 
+        : form.phoneNumber;
+
+      // call the signUp function from the auth service with the form data, converting roleId to a number
+      // We do NOT send confirmPassword as the backend DTO forbids non-whitelisted properties
       await signUp({
         firstName: form.firstName,
         lastName: form.lastName,
-        phoneNumber: form.phoneNumber,
+        phoneNumber: formattedPhone,
         password: form.password,
-        confirmPassword: form.confirmPassword || undefined,
+        // confirmPassword is only for client-side validation
         roleId: Number(form.roleId),
       });
 
@@ -62,11 +73,13 @@ const SignUp = () => {
   };
 
   return (
-    <section className="flex flex-col gap-4 px-10 py-3 justify-center items-center w-full">
+    <section className="auth-card">
       <h2>Sign up</h2>
       <p className="muted">Create an account with your phone number.</p>
+      {status && <p className="form-message form-message-success">{status}</p>}
+      {error && <p className="form-message form-message-error">{error}</p>}
 
-      <form className="form-grid min-w-md" onSubmit={handleSubmit}>
+      <form className="form-grid" onSubmit={handleSubmit}>
         <label className="input">
           First name
           <input
@@ -132,8 +145,6 @@ const SignUp = () => {
           />
         </label>
         <button className="button" type="submit">Create account</button>
-        {status && <p>{status}</p>}
-        {error && <p className="muted">{error}</p>}
       </form>
     </section>
   );

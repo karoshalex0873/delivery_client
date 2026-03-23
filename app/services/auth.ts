@@ -14,6 +14,25 @@ export type SignInPayload = {
 
 const BaseURL = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
 
+const parseError = async (response: Response, fallback: string) => {
+  try {
+    const data = await response.json();
+    if (typeof data?.message === "string") {
+      return data.message;
+    }
+    if (Array.isArray(data?.message)) {
+      return data.message.join(", ");
+    }
+  } catch {
+    const text = await response.text();
+    if (text) {
+      return text;
+    }
+  }
+
+  return fallback;
+};
+
 export async function signUp(payload: SignUpPayload) {
   const response = await fetch(`${BaseURL}/auth/signup`, {
     method: "POST",
@@ -22,19 +41,7 @@ export async function signUp(payload: SignUpPayload) {
   });
 
   if (!response.ok) {
-    let message = "Sign up failed";
-    try {
-      const data = await response.json();
-      if (typeof data?.message === "string") {
-        message = data.message;
-      }
-    } catch {
-      const text = await response.text();
-      if (text) {
-        message = text;
-      }
-    }
-    throw new Error(message);
+    throw new Error(await parseError(response, "Sign up failed"));
   }
 
   return response.json();
@@ -48,19 +55,7 @@ export const signIn = async (payload: SignInPayload) => {
     })
     // if the response is not ok, try to extract the error message from the response body and throw an error with that message
     if (!response.ok) {
-      let message = "Sign in failed";
-      try {
-        const data = await response.json();
-        if (typeof data?.message === "string") {
-          message = data.message;
-        }
-      } catch (error) {
-        const text = await response.text();
-        if (text) {
-          message = text;
-        }
-      }
-      throw new Error(message);
+      throw new Error(await parseError(response, "Sign in failed"));
     }
     return response.json();
 }

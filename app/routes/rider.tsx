@@ -1,5 +1,5 @@
 import { Link } from "react-router";
-import { useRoleGuard } from "~/components/role-guard";
+import { useRoleGuard } from "../components/role-guard";
 
 const Rider = () => {
   const authorized = useRoleGuard(2);
