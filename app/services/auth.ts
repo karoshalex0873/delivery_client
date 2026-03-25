@@ -1,16 +1,23 @@
 export type SignUpPayload = {
   firstName: string;
   lastName: string;
-  phoneNumber: string;
+  email: string;
   password: string;
   confirmPassword?: string;
-  roleId: number;
 };
 
 export type SignInPayload = {
-  phoneNumber: string;
+  email: string;
   password: string;
 }
+
+export type GoogleSignInPayload = {
+  email: string;
+  firstName?: string;
+  lastName?: string;
+  googleId?: string;
+  phoneNumber?: string;
+};
 
 const BaseURL = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
 
@@ -60,10 +67,41 @@ export const signIn = async (payload: SignInPayload) => {
     return response.json();
 }
 
+export const signInWithGoogle = async (payload: GoogleSignInPayload) => {
+  const response = await fetch(`${BaseURL}/auth/signin/google`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error(await parseError(response, "Google sign in failed"));
+  }
+
+  return response.json();
+};
+
 type TokenPayload = {
   sub?: string;
   roleId?: number;
   exp?: number;
+};
+
+export type CurrentUserRecord = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phoneNumber?: string | null;
+  authProvider?: string;
+  roleId: number;
+};
+
+export type UpdateCurrentUserPayload = {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  phoneNumber?: string;
 };
 
 export const getAccessToken = () => {
@@ -76,6 +114,20 @@ export const getAccessToken = () => {
 export const clearAccessToken = () => {
   if (typeof window !== "undefined") {
     localStorage.removeItem("accessToken");
+    localStorage.removeItem("roleId");
+  }
+};
+
+export const logout = async () => {
+  try {
+    await fetch(`${BaseURL}/auth/logout`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch {
+    // No-op. Local logout should continue even if API call fails.
+  } finally {
+    clearAccessToken();
   }
 };
 
@@ -105,4 +157,47 @@ export const isTokenExpired = (token: string) => {
 
 export const getRoleIdFromToken = (token: string) => {
   return parseJwt(token)?.roleId ?? null;
+};
+
+export const getCurrentUser = async () => {
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error("Missing access token");
+  }
+
+  const response = await fetch(`${BaseURL}/auth/me`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(await parseError(response, "Failed to load current user"));
+  }
+
+  return response.json() as Promise<CurrentUserRecord>;
+};
+
+export const updateCurrentUser = async (payload: UpdateCurrentUserPayload) => {
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error("Missing access token");
+  }
+
+  const response = await fetch(`${BaseURL}/auth/me/update`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error(await parseError(response, "Failed to update profile"));
+  }
+
+  return response.json() as Promise<CurrentUserRecord>;
 };

@@ -1,17 +1,33 @@
 import { useEffect, useState } from "react";
 import { ClipboardList } from "lucide-react";
-import { getMyOrders, type RestaurantOrderRecord } from "../services/restaurant";
+import { io, type Socket } from "socket.io-client";
+import {
+  getMyOrderUserLocations,
+  getMyOrders,
+  type RestaurantOrderRecord,
+  type RestaurantOrderUserLocationRecord,
+} from "../services/restaurant";
+import {
+  restaurantAcceptOrder,
+  restaurantMarkOrderReady,
+  restaurantSignDeliveryStart,
+} from "../services/orders";
 import { useRestaurantLayout } from "./restaurant";
+
+const BaseURL = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
 
 const RestaurantOrders = () => {
   const { restaurant, loading, error } = useRestaurantLayout();
   const [orders, setOrders] = useState<RestaurantOrderRecord[]>([]);
+  const [orderUserLocations, setOrderUserLocations] = useState<Record<string, RestaurantOrderUserLocationRecord["location"]>>({});
   const [ordersLoading, setOrdersLoading] = useState(true);
   const [ordersError, setOrdersError] = useState<string | null>(null);
+  const [actionOrderId, setActionOrderId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!restaurant) {
       setOrders([]);
+      setOrderUserLocations({});
       setOrdersLoading(false);
       setOrdersError(null);
       return;
@@ -23,12 +39,18 @@ const RestaurantOrders = () => {
       setOrdersLoading(true);
 
       try {
-        const data = await getMyOrders();
+        const [ordersData, locationsData] = await Promise.all([getMyOrders(), getMyOrderUserLocations()]);
         if (!isMounted) {
           return;
         }
 
-        setOrders(data);
+        setOrders(ordersData);
+        setOrderUserLocations(
+          locationsData.reduce<Record<string, RestaurantOrderUserLocationRecord["location"]>>((acc, item) => {
+            acc[item.orderId] = item.location;
+            return acc;
+          }, {}),
+        );
         setOrdersError(null);
       } catch (loadError) {
         if (!isMounted) {
@@ -47,6 +69,90 @@ const RestaurantOrders = () => {
 
     return () => {
       isMounted = false;
+    };
+  }, [restaurant]);
+
+  const runOrderAction = async (
+    orderId: string,
+    action: (id: string) => Promise<RestaurantOrderRecord>,
+  ) => {
+    setActionOrderId(orderId);
+    setOrdersError(null);
+
+    try {
+      const updated = await action(orderId);
+      setOrders((current) => current.map((order) => (order.id === orderId ? updated : order)));
+    } catch (actionError) {
+      setOrdersError(actionError instanceof Error ? actionError.message : "Failed to update order");
+    } finally {
+      setActionOrderId(null);
+    }
+  };
+
+  useEffect(() => {
+    if (!restaurant) {
+      return;
+    }
+
+    let isMounted = true;
+
+    const poll = async () => {
+      try {
+        const locationsData = await getMyOrderUserLocations();
+        if (!isMounted) {
+          return;
+        }
+        setOrderUserLocations(
+          locationsData.reduce<Record<string, RestaurantOrderUserLocationRecord["location"]>>((acc, item) => {
+            acc[item.orderId] = item.location;
+            return acc;
+          }, {}),
+        );
+      } catch {
+        // Keep current location state and retry on next interval.
+      }
+    };
+
+    const intervalId = window.setInterval(() => {
+      void poll();
+    }, 5000);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(intervalId);
+    };
+  }, [restaurant]);
+
+  useEffect(() => {
+    if (!restaurant) {
+      return;
+    }
+
+    const socket: Socket = io(BaseURL, {
+      path: "/socket.io",
+      withCredentials: true,
+      reconnection: true,
+      reconnectionAttempts: 10,
+      timeout: 10000,
+    });
+
+    socket.on("connect", () => {
+      socket.emit("location:restaurant:subscribe", { restaurantId: restaurant.id });
+    });
+
+    socket.on("location:user:updated", (payload: { orderId?: string; location?: RestaurantOrderUserLocationRecord["location"] }) => {
+      if (!payload?.orderId) {
+        return;
+      }
+
+      setOrderUserLocations((current) => ({
+        ...current,
+        [payload.orderId as string]: payload.location ?? null,
+      }));
+    });
+
+    return () => {
+      socket.disconnect();
     };
   }, [restaurant]);
 
@@ -103,7 +209,7 @@ const RestaurantOrders = () => {
     <section className="space-y-4">
       <div>
         <h2 className="text-lg font-semibold text-slate-900">Orders</h2>
-        <p className="text-sm text-slate-500">Track order status, customer details, and ordered items.</p>
+        <p className="text-sm text-slate-500">Restaurant actions: Accept order, mark ready, and sign delivery start.</p>
       </div>
 
       <div className="grid gap-4">
@@ -120,10 +226,40 @@ const RestaurantOrders = () => {
                 <p className="text-sm text-slate-600">
                   Customer: {order.user ? `${order.user.firstName} ${order.user.lastName}` : order.userId}
                 </p>
+                <p className="text-sm text-slate-500">Location visibility is handled on the rider side.</p>
                 <p className="text-sm text-slate-600">
                   Rider: {order.rider ? `${order.rider.name} (${order.rider.status})` : "Not assigned"}
                 </p>
                 <p className="text-sm text-slate-600">Total: KES {order.totalPrice.toLocaleString()}</p>
+                <p className="pt-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Only lifecycle actions allowed by restaurant
+                </p>
+                <div className="flex flex-wrap gap-2 pt-2">
+                  <button
+                    type="button"
+                    disabled={actionOrderId === order.id || order.status !== "pending"}
+                    onClick={() => void runOrderAction(order.id, restaurantAcceptOrder)}
+                    className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-slate-700 transition hover:border-slate-900 hover:text-slate-900 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                  >
+                    Accept order
+                  </button>
+                  <button
+                    type="button"
+                    disabled={actionOrderId === order.id || !["accepted", "preparing"].includes(order.status)}
+                    onClick={() => void runOrderAction(order.id, restaurantMarkOrderReady)}
+                    className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-slate-700 transition hover:border-slate-900 hover:text-slate-900 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                  >
+                    Ready for pickup
+                  </button>
+                  <button
+                    type="button"
+                    disabled={actionOrderId === order.id || !["ready_for_pickup", "delivery_sign_rider"].includes(order.status)}
+                    onClick={() => void runOrderAction(order.id, restaurantSignDeliveryStart)}
+                    className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-slate-700 transition hover:border-slate-900 hover:text-slate-900 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                  >
+                    Sign delivery start
+                  </button>
+                </div>
               </div>
 
               <div className="min-w-[220px] rounded-2xl border border-slate-200 bg-white p-4">

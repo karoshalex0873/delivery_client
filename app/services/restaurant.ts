@@ -62,6 +62,18 @@ export type RestaurantOrderRecord = {
   orderItems?: OrderItemRecord[];
 };
 
+export type RestaurantOrderUserLocationRecord = {
+  orderId: string;
+  orderStatus: string;
+  user: RestaurantOwnerRecord;
+  location: {
+    userId: string;
+    latitude: number;
+    longitude: number;
+    updatedAt: string;
+  } | null;
+};
+
 const getToken = () => {
   if (typeof window === "undefined") {
     return null;
@@ -219,6 +231,18 @@ export const getMyOrders = async () => {
   return response.json() as Promise<RestaurantOrderRecord[]>;
 };
 
+export const getMyOrderUserLocations = async () => {
+  const response = await fetch(`${BaseURL}/restaurant/me/orders/user-locations`, {
+    headers: jsonHeaders(),
+  });
+
+  if (!response.ok) {
+    throw new Error(await parseError(response, "Failed to load order user locations"));
+  }
+
+  return response.json() as Promise<RestaurantOrderUserLocationRecord[]>;
+};
+
 export const createMyMenuItem = async (payload: MenuItemPayload) => {
   const response = await fetch(`${BaseURL}/restaurant/me/menu-items`, {
     method: "POST",
@@ -270,4 +294,18 @@ export const getRestaurantOrdersById = async (restaurantId: string) => {
   }
 
   return response.json() as Promise<RestaurantOrderRecord[]>;
+};
+
+export const upsertMyRestaurantLocation = async (latitude: number, longitude: number) => {
+  const response = await fetch(`${BaseURL}/restaurant/me/location`, {
+    method: "POST",
+    headers: jsonHeaders(),
+    body: JSON.stringify({ latitude, longitude }),
+  });
+
+  if (!response.ok) {
+    throw new Error(await parseError(response, "Failed to update restaurant location"));
+  }
+
+  return response.json();
 };

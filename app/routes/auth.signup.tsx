@@ -1,153 +1,224 @@
-import { useState, type ChangeEvent, type SyntheticEvent } from "react";
-import { signUp } from "../services/auth";
+﻿import { useEffect, useState, type ChangeEvent } from "react";
+import { Link, useNavigate } from "react-router";
+import { Eye, EyeOff, Loader2, Mail, Lock, User } from "lucide-react";
+import { motion } from "framer-motion";
+import { getAccessToken, isTokenExpired, signUp } from "~/services/auth";
 
-const SignUp = () => {
-  // set up form state to track input values and submission status
-  const [form, setForm] = useState({
-    firstName: "",
-    lastName: "",
-    phoneNumber: "",
-    password: "",
-    confirmPassword: "",
-    roleId: "1",
-  });
-  
-  // status can be "Sign up successful" or null, error can be an error message or null
-  const [status, setStatus] = useState<string | null>(null);
-  // error state to capture any error messages from the sign-up process
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export default function SignUp() {
+  const navigate = useNavigate();
+  const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // handleChange updates the form state when any input changes, using the name attribute to identify which field to update
-  const handleChange = (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = event.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
+  const [formData, setFormData] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    password: "",
+    confirmPassword: "",
+  });
+
+  useEffect(() => {
+    const token = getAccessToken();
+    if (token && !isTokenExpired(token)) {
+      navigate('/customer', { replace: true });
+    }
+  }, [navigate]);
+
+  const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+    if (error) setError(null);
   };
 
-  // handleSubmit is called when the form is submitted, it prevents the default form submission behavior, resets status and error states, and then calls the signUp function with the form data
-  const handleSubmit = async (event: SyntheticEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setError(null);
-    setStatus(null);
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
 
-    // log the form data for debugging purposes
-    console.log("Submitting form with data:", form);
+    if (!emailPattern.test(formData.email.trim().toLowerCase())) {
+      setError("Enter a valid email address");
+      return;
+    }
 
-    if (form.password !== form.confirmPassword) {
+    if (formData.password !== formData.confirmPassword) {
       setError("Passwords do not match");
       return;
     }
 
+    setIsLoading(true);
+    setError(null);
+
     try {
-      // Format phone number: replace leading '0' with '+254'
-      const formattedPhone = form.phoneNumber.startsWith("0") 
-        ? `+254${form.phoneNumber.slice(1)}` 
-        : form.phoneNumber;
-
-      // call the signUp function from the auth service with the form data, converting roleId to a number
-      // We do NOT send confirmPassword as the backend DTO forbids non-whitelisted properties
       await signUp({
-        firstName: form.firstName,
-        lastName: form.lastName,
-        phoneNumber: formattedPhone,
-        password: form.password,
-        // confirmPassword is only for client-side validation
-        roleId: Number(form.roleId),
+        firstName: formData.firstName.trim(),
+        lastName: formData.lastName.trim(),
+        email: formData.email.trim().toLowerCase(),
+        password: formData.password,
       });
 
-      setStatus("Sign up successful");
-      // reset the form after successful submission
-      setForm({
-        firstName: "",
-        lastName: "",
-        phoneNumber: "",
-        password: "",
-        confirmPassword: "",
-        roleId: "1",
-      });
-      
-    } catch (err) {
-      // catch any errors from the sign-up process and set the error state to display the error message to the user
-      const message = err instanceof Error ? err.message : "Sign up failed";
-      setError(message);
+      navigate("/auth/signin");
+    } catch (err: any) {
+      setError(err.message || "Failed to create account.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
-    <section className="auth-card">
-      <h2>Sign up</h2>
-      <p className="muted">Create an account with your phone number.</p>
-      {status && <p className="form-message form-message-success">{status}</p>}
-      {error && <p className="form-message form-message-error">{error}</p>}
+    <div className="auth-grid">
+      <div className="auth-panel lg:rounded-r-[3rem]">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35 }}
+          className="mx-auto w-full max-w-md space-y-3"
+        >
+          <div className="space-y-1 text-center">
+            <div className="mb-1 inline-flex h-10 w-10 items-center justify-center rounded-lg bg-brand-red text-xl font-bold text-white shadow-lg shadow-brand-red/20">
+              Q
+            </div>
+            <h1 className="auth-title text-2xl">Create Account</h1>
+            <p className="auth-subtitle text-xs leading-relaxed">
+              Sign up today and get free delivery on your first order!
+            </p>
+          </div>
 
-      <form className="form-grid" onSubmit={handleSubmit}>
-        <label className="input">
-          First name
-          <input
-            type="text"
-            name="firstName"
-            placeholder="First name"
-            value={form.firstName}
-            onChange={handleChange}
-            required
-          />
-        </label>
-        <label className="input">
-          Last name
-          <input
-            type="text"
-            name="lastName"
-            placeholder="Last name"
-            value={form.lastName}
-            onChange={handleChange}
-            required
-          />
-        </label>
-        <label className="input">
-          Phone number
-          <input
-            type="tel"
-            name="phoneNumber"
-            placeholder="0803 000 0000"
-            value={form.phoneNumber}
-            onChange={handleChange}
-            required
-          />
-        </label>
-        <label className="input">
-          Role
-          <select name="roleId" value={form.roleId} onChange={handleChange}>
-            <option value="1">Customer</option>
-            <option value="2">Rider</option>
-            <option value="3">Restaurant</option>
-            <option value="4">Admin</option>
-          </select>
-        </label>
-        <label className="input">
-          Password
-          <input
-            type="password"
-            name="password"
-            placeholder="Create a password"
-            value={form.password}
-            onChange={handleChange}
-            required
-          />
-        </label>
-        <label className="input">
-          Confirm password
-          <input
-            type="password"
-            name="confirmPassword"
-            placeholder="Confirm password"
-            value={form.confirmPassword}
-            onChange={handleChange}
-            required
-          />
-        </label>
-        <button className="button" type="submit">Create account</button>
-      </form>
-    </section>
+          <form onSubmit={handleSubmit} className="space-y-3">
+            {error && <div className="auth-error">{error}</div>}
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <label className="ml-1 text-sm font-bold text-foreground" htmlFor="firstName">First name</label>
+                <div className="relative">
+                  <input
+                    id="firstName"
+                    name="firstName"
+                    type="text"
+                    required
+                    placeholder="Jane"
+                    className="input-field pr-12"
+                    value={formData.firstName}
+                    onChange={handleChange}
+                  />
+                  <User className="pointer-events-none absolute right-4 top-3.5 h-5 w-5 text-muted-foreground/50" />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="ml-1 text-sm font-bold text-foreground" htmlFor="lastName">Last name</label>
+                <div className="relative">
+                  <input
+                    id="lastName"
+                    name="lastName"
+                    type="text"
+                    required
+                    placeholder="Doe"
+                    className="input-field pr-12"
+                    value={formData.lastName}
+                    onChange={handleChange}
+                  />
+                  <User className="pointer-events-none absolute right-4 top-3.5 h-5 w-5 text-muted-foreground/50" />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="ml-1 text-sm font-bold text-foreground" htmlFor="email">Email</label>
+              <div className="relative">
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  required
+                  placeholder="name@example.com"
+                  className="input-field pr-12"
+                  value={formData.email}
+                  onChange={handleChange}
+                />
+                <Mail className="pointer-events-none absolute right-4 top-3.5 h-5 w-5 text-muted-foreground/50" />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="ml-1 text-sm font-bold text-foreground" htmlFor="password">Password</label>
+              <div className="relative">
+                <input
+                  id="password"
+                  name="password"
+                  type={showPassword ? "text" : "password"}
+                  required
+                  placeholder="Create password"
+                  className="input-field pr-12"
+                  value={formData.password}
+                  onChange={handleChange}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-4 top-3.5 text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="ml-1 text-sm font-bold text-foreground" htmlFor="confirmPassword">Confirm password</label>
+              <div className="relative">
+                <input
+                  id="confirmPassword"
+                  name="confirmPassword"
+                  type={showPassword ? "text" : "password"}
+                  required
+                  placeholder="Confirm password"
+                  className="input-field pr-12"
+                  value={formData.confirmPassword}
+                  onChange={handleChange}
+                />
+              </div>
+            </div>
+
+            <button type="submit" className="btn-primary h-12 w-full" disabled={isLoading}>
+              {isLoading ? (
+                <span className="inline-flex items-center gap-2">
+                  <Loader2 className="h-5 w-5 animate-spin" /> Creating account...
+                </span>
+              ) : (
+                "Create Customer Account"
+              )}
+            </button>
+          </form>
+
+          <div className="space-y-1 text-center mt-4">
+            <p className="text-xs text-muted-foreground">
+              Already have an account?{" "}
+              <Link to="/auth/signin" className="font-semibold text-brand-red hover:underline">
+                Sign in
+              </Link>
+            </p>
+            <p>
+              <a
+                href="mailto:careers@quickbite.co.ke?subject=QuickBite%20Application"
+                className="auth-application-link text-xs"
+              >
+                Join as Rider or Restaurant
+              </a>
+            </p>
+          </div>
+        </motion.div>
+      </div>
+
+      <div className="relative hidden items-center justify-center overflow-hidden bg-background p-12 lg:flex">
+        <div className="absolute right-0 top-0 h-125 w-125 -translate-y-1/3 translate-x-1/3 rounded-full bg-brand-red/5 blur-[100px]" />
+        <div className="absolute bottom-0 left-0 h-125 w-124 -translate-x-1/3 translate-y-1/3 rounded-full bg-warning/10 blur-[100px]" />
+        <div className="relative z-10 max-w-lg space-y-4 text-center">
+          <h2 className="h2">Customer onboarding first.</h2>
+          <p className="text-subtle">Rider and Restaurant access is reviewed through applications and admin approval for quality and trust.</p>
+        </div>
+      </div>
+    </div>
   );
-};
+}
 
-export default SignUp;
+
