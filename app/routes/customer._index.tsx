@@ -1,10 +1,11 @@
-﻿import { useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { Link, useOutletContext, useSearchParams } from "react-router";
 import { motion } from "framer-motion";
 import { type CustomerContextData } from "./customer";
 import { Button } from "~/components/ui/button";
 import { Heart, Clock3, MapPin, Star, Filter, Plus, Minus, Trash2 } from "lucide-react";
 import { formatCurrency } from "~/lib/utils";
+import { getMyShippingQuote, type ShippingQuoteRecord } from "~/services/orders";
 
 const filterOptions = ["All", "Fast Delivery", "Top Rated", "Nearby"] as const;
 
@@ -17,7 +18,20 @@ const fallbackRestaurantImages = [
 
 const getMockRating = (seed: string) => 4.2 + ((seed.length % 8) / 10);
 const getMockDeliveryTime = (seed: string) => 20 + (seed.length % 18);
-const getMockDistance = (seed: string) => 0.8 + ((seed.length % 7) / 2);
+const calculateDistanceKm = (
+  from: { latitude: number; longitude: number },
+  to: { latitude: number; longitude: number },
+) => {
+  const toRad = (value: number) => (value * Math.PI) / 180;
+  const earthRadiusKm = 6371;
+  const dLat = toRad(to.latitude - from.latitude);
+  const dLon = toRad(to.longitude - from.longitude);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(from.latitude)) * Math.cos(toRad(to.latitude)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+
+  return 2 * earthRadiusKm * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
 
 export default function CustomerDashboard() {
   const {
@@ -33,11 +47,80 @@ export default function CustomerDashboard() {
     checkoutError,
     paymentPhoneNumber,
     setPaymentPhoneNumber,
+    customerLocation,
   } = useOutletContext<CustomerContextData>();
 
   const [searchParams] = useSearchParams();
   const view = searchParams.get("view") ?? "home";
   const [activeFilter, setActiveFilter] = useState<(typeof filterOptions)[number]>("All");
+  const [shippingQuote, setShippingQuote] = useState<ShippingQuoteRecord | null>(null);
+  const [shippingLoading, setShippingLoading] = useState(false);
+  const [addressCoordinatesByRestaurant, setAddressCoordinatesByRestaurant] = useState<
+    Record<string, { latitude: number; longitude: number }>
+  >({});
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const geocodeMissingRestaurantAddresses = async () => {
+      const missing = restaurants.filter(
+        (restaurant) =>
+          !restaurant.location &&
+          restaurant.address?.trim() &&
+          !addressCoordinatesByRestaurant[restaurant.id],
+      );
+
+      for (const restaurant of missing) {
+        try {
+          const params = new URLSearchParams({
+            format: "jsonv2",
+            q: restaurant.address,
+            limit: "1",
+          });
+          const response = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, {
+            headers: { Accept: "application/json" },
+          });
+          if (!response.ok) {
+            continue;
+          }
+          const data = (await response.json()) as Array<{ lat?: string; lon?: string }>;
+          const latitude = Number(data[0]?.lat);
+          const longitude = Number(data[0]?.lon);
+
+          if (!cancelled && Number.isFinite(latitude) && Number.isFinite(longitude)) {
+            setAddressCoordinatesByRestaurant((current) => ({
+              ...current,
+              [restaurant.id]: { latitude, longitude },
+            }));
+          }
+        } catch {
+          // Ignore geocode failures; UI will show "Distance unavailable".
+        }
+      }
+    };
+
+    void geocodeMissingRestaurantAddresses();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [restaurants, addressCoordinatesByRestaurant]);
+
+  const getRestaurantDistanceKm = (restaurant: (typeof restaurants)[number]) => {
+    if (!customerLocation) {
+      return null;
+    }
+
+    const restaurantCoords = restaurant.location ?? addressCoordinatesByRestaurant[restaurant.id] ?? null;
+    if (!restaurantCoords) {
+      return null;
+    }
+
+    return calculateDistanceKm(
+      { latitude: customerLocation.latitude, longitude: customerLocation.longitude },
+      { latitude: restaurantCoords.latitude, longitude: restaurantCoords.longitude },
+    );
+  };
 
   const feedRestaurants = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -45,7 +128,7 @@ export default function CustomerDashboard() {
     return restaurants.filter((restaurant) => {
       const rating = getMockRating(restaurant.id);
       const delivery = getMockDeliveryTime(restaurant.id);
-      const distance = getMockDistance(restaurant.id);
+      const distance = getRestaurantDistanceKm(restaurant);
       const matchesQuery =
         !query ||
         restaurant.name.toLowerCase().includes(query) ||
@@ -56,11 +139,11 @@ export default function CustomerDashboard() {
         activeFilter === "All" ||
         (activeFilter === "Fast Delivery" && delivery <= 30) ||
         (activeFilter === "Top Rated" && rating >= 4.7) ||
-        (activeFilter === "Nearby" && distance <= 2.5);
+        (activeFilter === "Nearby" && distance != null && distance <= 2.5);
 
       return matchesQuery && matchesFilter;
     });
-  }, [activeFilter, restaurants, searchQuery]);
+  }, [activeFilter, restaurants, searchQuery, customerLocation]);
 
   const favoriteRestaurants = useMemo(
     () => restaurants.filter((restaurant) => favorites.includes(restaurant.id)),
@@ -91,6 +174,39 @@ export default function CustomerDashboard() {
 
   const cartTotal = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const cartRestaurantId = cartItems[0]?.restaurantId ?? null;
+  const deliveryFee = shippingQuote?.shippingCost ?? 0;
+  const grandTotal = cartTotal + deliveryFee;
+
+  useEffect(() => {
+    if (!cartRestaurantId) {
+      setShippingQuote(null);
+      return;
+    }
+
+    let isMounted = true;
+    setShippingLoading(true);
+
+    void getMyShippingQuote(cartRestaurantId)
+      .then((quote) => {
+        if (isMounted) {
+          setShippingQuote(quote);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setShippingQuote(null);
+        }
+      })
+      .finally(() => {
+        if (isMounted) {
+          setShippingLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [cartRestaurantId]);
 
   const updateCart = (menuItemId: string, delta: number) => {
     setCart((prev) => {
@@ -113,9 +229,18 @@ export default function CustomerDashboard() {
   const renderRestaurantCard = (restaurant: (typeof restaurants)[number], index: number) => {
     const rating = getMockRating(restaurant.id).toFixed(1);
     const delivery = getMockDeliveryTime(restaurant.id);
-    const distance = getMockDistance(restaurant.id).toFixed(1);
+    const distanceKm = getRestaurantDistanceKm(restaurant);
+    const distanceLabel = distanceKm != null ? `${distanceKm.toFixed(2)} km away` : "Distance unavailable";
     const image = fallbackRestaurantImages[index % fallbackRestaurantImages.length];
     const isFavorite = favorites.includes(restaurant.id);
+    const offeredCategories = [
+      ...new Set(
+        (restaurant.menuItems ?? [])
+          .filter((item) => (item.availableCount ?? 1) > 0)
+          .map((item) => item.category?.trim())
+          .filter((value): value is string => Boolean(value)),
+      ),
+    ].slice(0, 3);
 
     return (
       <motion.article
@@ -159,9 +284,18 @@ export default function CustomerDashboard() {
           </div>
 
           <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{restaurant.description || "Great meals and fast delivery."}</p>
+          {offeredCategories.length > 0 ? (
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {offeredCategories.map((category) => (
+                <span key={`${restaurant.id}-${category}`} className="rounded-full bg-surface-hover px-2 py-1 text-[11px] font-semibold text-muted-foreground">
+                  {category}
+                </span>
+              ))}
+            </div>
+          ) : null}
 
           <div className="mt-4 flex items-center justify-between border-t border-border/50 pt-4 text-xs font-medium text-muted-foreground">
-            <span className="flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5" /> {distance} km away</span>
+            <span className="flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5" /> {distanceLabel}</span>
             <span className="flex items-center gap-1.5 text-brand-red"><Clock3 className="h-3.5 w-3.5" /> Fast</span>
           </div>
         </div>
@@ -222,8 +356,21 @@ export default function CustomerDashboard() {
                 className="input-field mt-2"
               />
               <div className="mt-3 flex items-center justify-between">
-                <p className="text-sm text-muted-foreground">Total</p>
-                <p className="text-xl font-bold text-brand-red">{formatCurrency(cartTotal)}</p>
+                <p className="text-sm text-muted-foreground">Subtotal</p>
+                <p className="text-base font-semibold text-foreground">{formatCurrency(cartTotal)}</p>
+              </div>
+              <div className="mt-1 flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">Delivery Fee</p>
+                <p className="text-base font-semibold text-brand-red">
+                  {shippingLoading ? "Calculating..." : formatCurrency(deliveryFee)}
+                </p>
+              </div>
+              {shippingQuote?.distanceKm != null ? (
+                <p className="mt-1 text-xs text-muted-foreground">Distance: {shippingQuote.distanceKm.toFixed(1)} km</p>
+              ) : null}
+              <div className="mt-2 flex items-center justify-between border-t border-border pt-2">
+                <p className="text-sm font-semibold text-foreground">Total</p>
+                <p className="text-xl font-bold text-brand-red">{formatCurrency(grandTotal)}</p>
               </div>
               {checkoutError ? <p className="mt-2 text-sm text-red-600">{checkoutError}</p> : null}
               {checkoutSuccess ? <p className="mt-2 text-sm text-green-600">{checkoutSuccess}</p> : null}
@@ -232,7 +379,7 @@ export default function CustomerDashboard() {
                 disabled={!cartRestaurantId || checkoutLoading}
                 onClick={() => (cartRestaurantId ? void handleCheckout(cartRestaurantId) : undefined)}
               >
-                {checkoutLoading ? "Processing..." : "Checkout"}
+                {checkoutLoading ? "Processing..." : `Checkout • ${formatCurrency(grandTotal)}`}
               </Button>
             </div>
           </div>
@@ -285,3 +432,5 @@ export default function CustomerDashboard() {
     </div>
   );
 }
+
+

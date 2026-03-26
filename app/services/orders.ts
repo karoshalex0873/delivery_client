@@ -6,6 +6,9 @@ export type CatalogMenuItemRecord = {
   id: string;
   name: string;
   price: number;
+  category?: string;
+  imageUrl?: string | null;
+  availableCount?: number;
   restaurantId: string;
 };
 
@@ -16,6 +19,11 @@ export type CatalogRestaurantRecord = {
   description?: string;
   phoneNumber: string;
   userId: string;
+  location?: {
+    latitude: number;
+    longitude: number;
+    updatedAt: string;
+  } | null;
   menuItems?: CatalogMenuItemRecord[];
 };
 
@@ -81,6 +89,13 @@ export type InitiatePaymentResponse = {
   checkoutRequestId?: string;
   merchantRequestId?: string;
   responseDescription?: string;
+};
+
+export type ShippingQuoteRecord = {
+  shippingCost: number;
+  distanceKm: number | null;
+  ratePerKm: number;
+  estimated: boolean;
 };
 
 const getToken = () => {
@@ -159,6 +174,16 @@ export const getMyCustomerOrders = async () => {
   }
 
   return response.json() as Promise<CustomerOrderRecord[]>;
+};
+
+export const getMyShippingQuote = async (restaurantId: string) => {
+  const response = await fetch(`${BaseURL}/orders/me/shipping-quote/${restaurantId}`, {
+    headers: jsonHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(await parseError(response, "Failed to load shipping quote"));
+  }
+  return response.json() as Promise<ShippingQuoteRecord>;
 };
 
 export const initiateDarajaPayment = async (payload: InitiatePaymentPayload) => {

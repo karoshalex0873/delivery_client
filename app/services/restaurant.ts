@@ -5,6 +5,7 @@ export type RestaurantPayload = {
   address: string;
   description?: string;
   phoneNumber: string;
+  categories?: string[];
 };
 
 export type RestaurantAdminPayload = RestaurantPayload & {
@@ -21,16 +22,23 @@ export type RestaurantOwnerRecord = {
 export type MenuItemPayload = {
   name: string;
   price: number;
+  category?: string;
+  imageUrl?: string;
+  availableCount?: number;
 };
 
 export type MenuItemRecord = MenuItemPayload & {
   id: string;
   restaurantId: string;
+  category: string;
+  imageUrl?: string | null;
+  availableCount: number;
 };
 
 export type RestaurantRecord = RestaurantPayload & {
   id: string;
   userId: string;
+  categories?: string[];
   user?: RestaurantOwnerRecord;
   menuItems?: MenuItemRecord[];
 };
@@ -46,6 +54,8 @@ export type OrderItemRecord = {
 
 export type RestaurantOrderRecord = {
   id: string;
+  createdAt?: string;
+  updatedAt?: string;
   status: string;
   totalPrice: number;
   userId: string;

@@ -34,6 +34,13 @@ const CATEGORY_CONFIG = [
 type CategoryId = (typeof CATEGORY_CONFIG)[number]["id"];
 
 const inferCategory = (item: CatalogMenuItemRecord): CategoryId => {
+  const fromApi = (item.category ?? "").toLowerCase();
+  if (fromApi.includes("beverage")) return "beverages";
+  if (fromApi.includes("fast")) return "fast-food";
+  if (fromApi.includes("veget")) return "vegetarian";
+  if (fromApi.includes("dessert")) return "desserts";
+  if (fromApi.includes("local")) return "local";
+
   const name = item.name.toLowerCase();
   if (/(juice|soda|drink|water|tea|coffee|smoothie|milkshake)/.test(name)) return "beverages";
   if (/(burger|pizza|fries|shawarma|hot dog|chicken|wrap)/.test(name)) return "fast-food";
@@ -75,7 +82,7 @@ export default function RestaurantDetail() {
     return <div className="p-8 text-center text-muted-foreground">Restaurant not found.</div>;
   }
 
-  const menuItems = restaurant.menuItems ?? [];
+  const menuItems = (restaurant.menuItems ?? []).filter((item) => (item.availableCount ?? 1) > 0);
   const categoryRows = buildCategoryRows(menuItems);
 
   const updateCart = (menuItemId: string, delta: number) => {
@@ -160,7 +167,7 @@ export default function RestaurantDetail() {
                           >
                             <div className="relative h-40 overflow-hidden">
                               <img
-                                src={fallbackFoodImages[(categoryIndex + itemIndex) % fallbackFoodImages.length]}
+                                src={item.imageUrl ?? fallbackFoodImages[(categoryIndex + itemIndex) % fallbackFoodImages.length]}
                                 alt={item.name}
                                 className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
                               />
@@ -238,4 +245,3 @@ export default function RestaurantDetail() {
     </div>
   );
 }
-
