@@ -9,6 +9,8 @@ import {
 } from "../services/restaurant";
 import {
   restaurantAcceptOrder,
+  restaurantCancelOrder,
+  restaurantDeleteOrder,
   restaurantMarkOrderReady,
   restaurantSignDeliveryStart,
 } from "../services/orders";
@@ -84,6 +86,19 @@ const RestaurantOrders = () => {
       setOrders((current) => current.map((order) => (order.id === orderId ? updated : order)));
     } catch (actionError) {
       setOrdersError(actionError instanceof Error ? actionError.message : "Failed to update order");
+    } finally {
+      setActionOrderId(null);
+    }
+  };
+
+  const runOrderDelete = async (orderId: string) => {
+    setActionOrderId(orderId);
+    setOrdersError(null);
+    try {
+      await restaurantDeleteOrder(orderId);
+      setOrders((current) => current.filter((order) => order.id !== orderId));
+    } catch (actionError) {
+      setOrdersError(actionError instanceof Error ? actionError.message : "Failed to delete order");
     } finally {
       setActionOrderId(null);
     }
@@ -258,6 +273,22 @@ const RestaurantOrders = () => {
                     className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-slate-700 transition hover:border-slate-900 hover:text-slate-900 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                   >
                     Sign delivery start
+                  </button>
+                  <button
+                    type="button"
+                    disabled={actionOrderId === order.id || ["out_for_delivery", "delivery_signed_by_rider", "delivered", "cancelled", "rejected"].includes(order.status)}
+                    onClick={() => void runOrderAction(order.id, restaurantCancelOrder)}
+                    className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-amber-700 transition hover:border-amber-500 hover:text-amber-800 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                  >
+                    Cancel order
+                  </button>
+                  <button
+                    type="button"
+                    disabled={actionOrderId === order.id || !["cancelled", "delivered", "rejected"].includes(order.status)}
+                    onClick={() => void runOrderDelete(order.id)}
+                    className="rounded-full border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-rose-700 transition hover:border-rose-500 hover:text-rose-800 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                  >
+                    Delete order
                   </button>
                 </div>
               </div>

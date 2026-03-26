@@ -39,6 +39,10 @@ export type CustomerOrderRecord = {
   paidAt?: string | null;
   paymentFailureReason?: string | null;
   totalPrice: number;
+  foodSubtotal?: number;
+  shippingCost?: number;
+  shippingRatePerKm?: number;
+  shippingDistanceKm?: number;
   userId: string;
   riderId?: string | null;
   restaurantId: string;
@@ -229,6 +233,17 @@ export const riderSignDeliveryStart = async (orderId: string) => {
   return response.json() as Promise<CustomerOrderRecord>;
 };
 
+export const riderSignDelivered = async (orderId: string) => {
+  const response = await fetch(`${BaseURL}/orders/${orderId}/rider/sign-delivered`, {
+    method: "PATCH",
+    headers: jsonHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(await parseError(response, "Failed to sign delivery completion"));
+  }
+  return response.json() as Promise<CustomerOrderRecord>;
+};
+
 export const customerConfirmDelivered = async (orderId: string) => {
   const response = await fetch(`${BaseURL}/orders/${orderId}/customer/confirm-delivered`, {
     method: "PATCH",
@@ -238,4 +253,70 @@ export const customerConfirmDelivered = async (orderId: string) => {
     throw new Error(await parseError(response, "Failed to confirm delivery"));
   }
   return response.json() as Promise<CustomerOrderRecord>;
+};
+
+export const customerCancelOrder = async (orderId: string) => {
+  const response = await fetch(`${BaseURL}/orders/${orderId}/customer/cancel`, {
+    method: "PATCH",
+    headers: jsonHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(await parseError(response, "Failed to cancel order"));
+  }
+  return response.json() as Promise<CustomerOrderRecord>;
+};
+
+export const restaurantCancelOrder = async (orderId: string) => {
+  const response = await fetch(`${BaseURL}/orders/${orderId}/restaurant/cancel`, {
+    method: "PATCH",
+    headers: jsonHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(await parseError(response, "Failed to cancel order"));
+  }
+  return response.json() as Promise<RestaurantOrderRecord>;
+};
+
+export const riderCancelOrder = async (orderId: string) => {
+  const response = await fetch(`${BaseURL}/orders/${orderId}/rider/cancel`, {
+    method: "PATCH",
+    headers: jsonHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(await parseError(response, "Failed to cancel order"));
+  }
+  return response.json() as Promise<CustomerOrderRecord>;
+};
+
+export const customerDeleteOrder = async (orderId: string) => {
+  const response = await fetch(`${BaseURL}/orders/${orderId}/customer`, {
+    method: "DELETE",
+    headers: jsonHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(await parseError(response, "Failed to delete order"));
+  }
+  return response.json() as Promise<{ ok: boolean; message: string }>;
+};
+
+export const restaurantDeleteOrder = async (orderId: string) => {
+  const response = await fetch(`${BaseURL}/orders/${orderId}/restaurant`, {
+    method: "DELETE",
+    headers: jsonHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(await parseError(response, "Failed to delete order"));
+  }
+  return response.json() as Promise<{ ok: boolean; message: string }>;
+};
+
+export const riderDeleteOrder = async (orderId: string) => {
+  const response = await fetch(`${BaseURL}/orders/${orderId}/rider`, {
+    method: "DELETE",
+    headers: jsonHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(await parseError(response, "Failed to delete order"));
+  }
+  return response.json() as Promise<{ ok: boolean; message: string }>;
 };

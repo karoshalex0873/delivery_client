@@ -2,11 +2,28 @@
 import { Link, NavLink, Outlet, useLocation, useOutletContext, useSearchParams } from "react-router";
 import { io, type Socket } from "socket.io-client";
 import { useClerk } from "@clerk/clerk-react";
-import { Bell, Heart, Home, LogOut, MapPin, Search, Settings, ShoppingCart, User } from "lucide-react";
+import {
+  Bell,
+  CheckCircle2,
+  Clock3,
+  Heart,
+  Home,
+  LogOut,
+  MapPin,
+  Package,
+  Search,
+  Settings,
+  ShoppingCart,
+  Truck,
+  User,
+  X,
+} from "lucide-react";
 import { useRoleGuard } from "../components/role-guard";
 import {
   checkoutOrder,
+  customerCancelOrder,
   customerConfirmDelivered,
+  customerDeleteOrder,
   getMyCustomerOrders,
   getOrderCatalog,
   initiateDarajaPayment,
@@ -14,6 +31,7 @@ import {
   type CustomerOrderRecord,
 } from "../services/orders";
 import { getCurrentUser, logout as logoutUser, type CurrentUserRecord } from "../services/auth";
+import { formatDate } from "~/lib/utils";
 
 const BaseURL = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
 
@@ -21,6 +39,37 @@ export type LifecycleState = {
   stage: number;
   title: string;
   logs: string[];
+  deliveryDetails?: {
+    estimatedMinutes: number | null;
+    distanceKm: number | null;
+    rider?: {
+      id: string;
+      name: string;
+      phoneNumber: string;
+    } | null;
+    deliveryLocation: {
+      label: string;
+      latitude: number | null;
+      longitude: number | null;
+      updatedAt: string | null;
+    };
+    riderLocation: {
+      latitude: number | null;
+      longitude: number | null;
+      updatedAt: string | null;
+    };
+    milestones: {
+      createdAt: string | null;
+      riderSignedDeliveredAt: string | null;
+      customerConfirmedDeliveredAt: string | null;
+    };
+  };
+};
+
+export type GeoPoint = {
+  latitude: number;
+  longitude: number;
+  updatedAt?: string;
 };
 
 export type CustomerContextData = {
@@ -36,10 +85,14 @@ export type CustomerContextData = {
   setPaymentPhoneNumber: Dispatch<SetStateAction<string>>;
   lifecycleByOrder: Record<string, LifecycleState>;
   handleConfirmDelivery: (orderId: string) => Promise<void>;
+  handleCancelOrder: (orderId: string) => Promise<void>;
+  handleDeleteOrder: (orderId: string) => Promise<void>;
   favorites: string[];
   toggleFavorite: (restaurantId: string) => void;
   searchQuery: string;
   setSearchQuery: Dispatch<SetStateAction<string>>;
+  riderLocations: Record<string, GeoPoint>;
+  customerLocation: GeoPoint | null;
 };
 
 export const useCustomerContext = () => useOutletContext<CustomerContextData>();
@@ -50,6 +103,13 @@ const buildLifecycle = (order: CustomerOrderRecord): LifecycleState => {
   }
   if (order.status === "out_for_delivery") {
     return { stage: 4, title: "On the Move", logs: ["Your order is on the move.", "Rider is heading to your location."] };
+  }
+  if (order.status === "delivery_signed_by_rider") {
+    return {
+      stage: 4,
+      title: "Awaiting Your Confirmation",
+      logs: ["Rider marked this order as delivered.", "Please confirm delivery to close this order."],
+    };
   }
   if (["ready_for_pickup", "delivery_sign_restaurant", "delivery_sign_rider"].includes(order.status)) {
     return { stage: 3, title: "Ready for Pickup", logs: ["Meal is ready for pickup.", "Waiting for both signatures to start delivery."] };
@@ -128,6 +188,8 @@ export default function CustomerLayout() {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [currentUser, setCurrentUser] = useState<CurrentUserRecord | null>(null);
   const [locationLabel, setLocationLabel] = useState("Locating...");
+  const [riderLocations, setRiderLocations] = useState<Record<string, GeoPoint>>({});
+  const [customerLocation, setCustomerLocation] = useState<GeoPoint | null>(null);
   const lastGeocodeAt = useRef(0);
 
   useEffect(() => {
@@ -179,10 +241,44 @@ export default function CustomerLayout() {
 
   const notifications = useMemo(
     () =>
-      orders.slice(0, 5).map((order) => ({
-        id: order.id,
-        message: `${order.restaurant?.name ?? "Restaurant"}: ${order.status.replace(/_/g, " ")}`,
-      })),
+      orders
+        .slice()
+        .sort((a, b) => {
+          const aTime = a.paidAt ? new Date(a.paidAt).getTime() : 0;
+          const bTime = b.paidAt ? new Date(b.paidAt).getTime() : 0;
+          return bTime - aTime;
+        })
+        .slice(0, 8)
+        .map((order) => {
+          const normalized = order.status.replace(/_/g, " ");
+          const status = order.status;
+          let icon = Clock3;
+          let tone = "text-muted-foreground bg-surface-hover";
+
+          if (status === "preparing" || status === "accepted" || status === "ready_for_pickup") {
+            icon = Package;
+            tone = "text-warning bg-warning/10";
+          } else if (status === "delivery_signed_by_rider") {
+            icon = CheckCircle2;
+            tone = "text-info bg-info/10";
+          } else if (status === "out_for_delivery") {
+            icon = Truck;
+            tone = "text-blue-600 bg-blue-50";
+          } else if (status === "delivered") {
+            icon = CheckCircle2;
+            tone = "text-success bg-success/10";
+          }
+
+          return {
+            id: order.id,
+            orderIdShort: order.id.slice(0, 8),
+            restaurantName: order.restaurant?.name ?? "Restaurant",
+            statusLabel: normalized,
+            paidAt: order.paidAt,
+            icon,
+            tone,
+          };
+        }),
     [orders],
   );
 
@@ -243,7 +339,15 @@ export default function CustomerLayout() {
       }
     });
 
-    socket.on("order:lifecycle:update", (payload: { orderId: string; status: string; logs: string[]; stage: number; stageTitle: string; rider?: CustomerOrderRecord["rider"] }) => {
+    socket.on("order:lifecycle:update", (payload: {
+      orderId: string;
+      status: string;
+      logs: string[];
+      stage: number;
+      stageTitle: string;
+      rider?: CustomerOrderRecord["rider"];
+      deliveryDetails?: LifecycleState["deliveryDetails"];
+    }) => {
       if (!payload?.orderId) {
         return;
       }
@@ -257,6 +361,22 @@ export default function CustomerLayout() {
           stage: payload.stage,
           title: payload.stageTitle,
           logs: payload.logs ?? [],
+          deliveryDetails: payload.deliveryDetails,
+        },
+      }));
+    });
+
+    socket.on("location:rider:updated", (payload: { riderId?: string; latitude?: number; longitude?: number; updatedAt?: string }) => {
+      if (!payload?.riderId || !Number.isFinite(payload.latitude) || !Number.isFinite(payload.longitude)) {
+        return;
+      }
+
+      setRiderLocations((current) => ({
+        ...current,
+        [payload.riderId as string]: {
+          latitude: payload.latitude as number,
+          longitude: payload.longitude as number,
+          updatedAt: payload.updatedAt,
         },
       }));
     });
@@ -284,6 +404,7 @@ export default function CustomerLayout() {
         async (ack?: { data?: { latitude?: number; longitude?: number } }) => {
           const lat = ack?.data?.latitude ?? latitude;
           const lng = ack?.data?.longitude ?? longitude;
+          setCustomerLocation({ latitude: lat, longitude: lng, updatedAt: new Date().toISOString() });
           const now = Date.now();
           if (now - lastGeocodeAt.current < 30000) {
             return;
@@ -297,6 +418,11 @@ export default function CustomerLayout() {
 
     const watchId = navigator.geolocation.watchPosition(
       (position) => {
+        setCustomerLocation({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          updatedAt: new Date().toISOString(),
+        });
         pushLocation(position.coords.latitude, position.coords.longitude);
       },
       () => {
@@ -367,6 +493,36 @@ export default function CustomerLayout() {
     }
   };
 
+  const handleCancelOrder = async (orderId: string) => {
+    setCheckoutError(null);
+    setCheckoutSuccess(null);
+    try {
+      const updated = await customerCancelOrder(orderId);
+      setOrders((current) => current.map((order) => (order.id === orderId ? updated : order)));
+      setLifecycleByOrder((current) => ({ ...current, [orderId]: buildLifecycle(updated) }));
+      setCheckoutSuccess("Order canceled.");
+    } catch (cancelError) {
+      setCheckoutError(cancelError instanceof Error ? cancelError.message : "Failed to cancel order");
+    }
+  };
+
+  const handleDeleteOrder = async (orderId: string) => {
+    setCheckoutError(null);
+    setCheckoutSuccess(null);
+    try {
+      await customerDeleteOrder(orderId);
+      setOrders((current) => current.filter((order) => order.id !== orderId));
+      setLifecycleByOrder((current) => {
+        const next = { ...current };
+        delete next[orderId];
+        return next;
+      });
+      setCheckoutSuccess("Order deleted.");
+    } catch (deleteError) {
+      setCheckoutError(deleteError instanceof Error ? deleteError.message : "Failed to delete order");
+    }
+  };
+
   const handleLogout = async () => {
     await logoutUser();
     try {
@@ -410,23 +566,23 @@ export default function CustomerLayout() {
         </div>
 
         <div className="flex flex-1 flex-col gap-2 overflow-y-auto px-4 py-6">
-          <NavLink 
-            to="/customer" 
-            end 
+          <NavLink
+            to="/customer"
+            end
             className={({ isActive }) => `flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors ${isHomeActive ? "bg-brand-red/10 text-brand-red" : "text-muted-foreground hover:bg-surface-hover hover:text-foreground"}`}
           >
             <Home className="h-5 w-5" />
             Home
           </NavLink>
-          <NavLink 
-            to="/customer/orders" 
+          <NavLink
+            to="/customer/orders"
             className={({ isActive }) => `flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors ${isOrdersActive ? "bg-brand-red/10 text-brand-red" : "text-muted-foreground hover:bg-surface-hover hover:text-foreground"}`}
           >
             <Bell className="h-5 w-5" />
             Orders
           </NavLink>
-          <NavLink 
-            to="/customer?view=cart" 
+          <NavLink
+            to="/customer?view=cart"
             className={`flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors relative ${isCartActive ? "bg-brand-red/10 text-brand-red" : "text-muted-foreground hover:bg-surface-hover hover:text-foreground"}`}
           >
             <ShoppingCart className="h-5 w-5" />
@@ -437,15 +593,15 @@ export default function CustomerLayout() {
               </span>
             )}
           </NavLink>
-          <NavLink 
-            to="/customer?view=favorites" 
+          <NavLink
+            to="/customer?view=favorites"
             className={`flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors ${isFavoritesActive ? "bg-brand-red/10 text-brand-red" : "text-muted-foreground hover:bg-surface-hover hover:text-foreground"}`}
           >
             <Heart className="h-5 w-5" />
             Favorites
           </NavLink>
-          <NavLink 
-            to="/customer/profile" 
+          <NavLink
+            to="/customer/profile"
             className={`flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors ${isProfileActive ? "bg-brand-red/10 text-brand-red" : "text-muted-foreground hover:bg-surface-hover hover:text-foreground"}`}
           >
             <User className="h-5 w-5" />
@@ -496,8 +652,7 @@ export default function CustomerLayout() {
               </div>
 
               <div className="min-w-0">
-                <p className="text-sm font-semibold text-foreground">Customer Dashboard</p>
-                <p className="truncate text-xs text-muted-foreground">{displayName}</p>
+                <p className="truncate text-md text-muted-foreground">{displayName}</p>
               </div>
             </div>
 
@@ -560,44 +715,90 @@ export default function CustomerLayout() {
           </div>
         </header>
 
+        {/* Notifications Modal */}
         {showNotifications && (
-          <div className="sticky top-16 z-20 w-full animate-fade-in border-b border-border bg-surface/95 px-4 py-3 backdrop-blur shadow-sm md:hidden">
-            <div className="section-container">
-              <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">Notifications</h3>
-              {notifications.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No updates yet.</p>
-              ) : (
-                <div className="space-y-2">
-                  {notifications.map((item) => (
-                    <div key={item.id} className="flex items-start gap-3 rounded-lg border border-border bg-background p-3 shadow-xs">
-                      <Bell className="mt-0.5 h-4 w-4 text-brand-red" />
-                      <p className="text-sm text-foreground">{item.message}</p>
+          <>
+            <div 
+              className="fixed inset-0 z-40 bg-black/20 backdrop-blur-sm transition-opacity animate-in fade-in"
+              onClick={() => setShowNotifications(false)}
+            />
+            <div className="fixed inset-x-3 bottom-3 z-50 flex max-h-[75vh] flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl animate-in slide-in-from-bottom duration-300 sm:inset-x-auto sm:bottom-auto sm:right-6 sm:top-20 sm:w-[420px] sm:max-h-[70vh] sm:slide-in-from-top-1">
+              <div className="flex items-center justify-between border-b border-border px-4 py-3 sm:px-5">
+                <div>
+                  <h3 className="text-sm font-bold uppercase tracking-wider text-foreground">Notifications</h3>
+                  <p className="mt-0.5 text-xs text-muted-foreground">Recent order updates</p>
+                </div>
+                {notifications.length > 0 && (
+                  <span className="rounded-full bg-brand-red/10 px-2 py-1 text-[11px] font-bold text-brand-red">
+                    {notifications.length} new
+                  </span>
+                )}
+                <button 
+                  onClick={() => setShowNotifications(false)}
+                  className="rounded-full p-2 text-muted-foreground hover:bg-surface-hover hover:text-foreground transition-colors"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              
+              <div className="flex-1 overflow-y-auto bg-surface/50 p-3 sm:p-4">
+                {notifications.length === 0 ? (
+                  <div className="flex h-full flex-col items-center justify-center space-y-3 pb-10 text-center">
+                    <div className="h-16 w-16 rounded-full bg-surface shadow-sm border border-border flex items-center justify-center">
+                      <Bell className="h-8 w-8 text-muted-foreground/50" />
                     </div>
-                  ))}
+                    <p className="text-base font-semibold text-foreground">You're all caught up!</p>
+                    <p className="text-sm text-muted-foreground max-w-[200px]">No new notifications at the moment.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2.5">
+                    {notifications.map((item) => (
+                      <div
+                        key={item.id}
+                        className="group relative overflow-hidden rounded-xl border border-border bg-surface p-3.5 shadow-sm transition-all hover:border-brand-red/25 hover:shadow-md"
+                      >
+                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-brand-red/80" />
+                        <div className="flex items-start gap-3 pl-1">
+                          <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${item.tone}`}>
+                            <item.icon className="h-4.5 w-4.5" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="truncate text-sm font-semibold text-foreground">{item.restaurantName}</p>
+                              <span className="rounded-md bg-surface-hover px-1.5 py-0.5 text-[10px] font-bold text-muted-foreground">
+                                #{item.orderIdShort}
+                              </span>
+                            </div>
+                            <p className="mt-0.5 text-xs font-medium capitalize text-muted-foreground">{item.statusLabel}</p>
+                            <p className="mt-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                              {item.paidAt ? formatDate(item.paidAt) : "Just now"}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              
+              {notifications.length > 0 && (
+                <div className="flex items-center justify-between border-t border-border bg-surface px-4 py-3">
+                  <button 
+                    onClick={() => setShowNotifications(false)}
+                    className="text-xs font-bold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    Close
+                  </button>
+                  <button
+                    onClick={() => setShowNotifications(false)}
+                    className="rounded-lg bg-brand-red px-3 py-1.5 text-xs font-bold text-white transition-colors hover:bg-brand-red-hover"
+                  >
+                    View Orders
+                  </button>
                 </div>
               )}
             </div>
-          </div>
-        )}
-
-        {showNotifications && (
-          <div className="hidden sticky top-16 z-20 w-full animate-fade-in border-b border-border bg-surface/95 px-4 py-3 backdrop-blur shadow-sm md:block">
-            <div className="section-container">
-              <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">Notifications</h3>
-              {notifications.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No updates yet.</p>
-              ) : (
-                <div className="space-y-2">
-                  {notifications.map((item) => (
-                    <div key={item.id} className="flex items-start gap-3 rounded-lg border border-border bg-background p-3 shadow-xs">
-                      <Bell className="mt-0.5 h-4 w-4 text-brand-red" />
-                      <p className="text-sm text-foreground">{item.message}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+          </>
         )}
 
         <main className="flex-1 overflow-y-auto pb-24 pt-6 px-4 sm:px-6 md:pb-8">
@@ -615,10 +816,14 @@ export default function CustomerLayout() {
               setPaymentPhoneNumber,
               lifecycleByOrder,
               handleConfirmDelivery,
+              handleCancelOrder,
+              handleDeleteOrder,
               favorites,
               toggleFavorite,
               searchQuery,
               setSearchQuery,
+              riderLocations,
+              customerLocation,
             }}
           />
         </main>
@@ -704,4 +909,3 @@ export default function CustomerLayout() {
     </div>
   );
 }
-

@@ -6,6 +6,7 @@ export type RiderProfile = {
   phoneNumber: string;
   status: "online" | "offline" | string;
   address: string;
+  costPerKm?: number;
 };
 
 export type RiderOrderOffer = {
@@ -109,6 +110,18 @@ export const updateRiderAvailability = async (status: "online" | "offline") => {
   return response.json() as Promise<RiderProfile>;
 };
 
+export const updateRiderShippingRate = async (costPerKm: number) => {
+  const response = await fetch(`${BaseURL}/rider/me/shipping-rate`, {
+    method: "PATCH",
+    headers: jsonHeaders(),
+    body: JSON.stringify({ costPerKm }),
+  });
+  if (!response.ok) {
+    throw new Error(await parseError(response, "Failed to update shipping rate"));
+  }
+  return response.json() as Promise<RiderProfile>;
+};
+
 export const upsertRiderLocation = async (latitude: number, longitude: number) => {
   const response = await fetch(`${BaseURL}/rider/me/location`, {
     method: "POST",
@@ -161,4 +174,26 @@ export const passRiderOrder = async (orderId: string) => {
     throw new Error(await parseError(response, "Failed to pass order"));
   }
   return response.json();
+};
+
+export const riderCancelOrder = async (orderId: string) => {
+  const response = await fetch(`${BaseURL}/orders/${orderId}/rider/cancel`, {
+    method: "PATCH",
+    headers: jsonHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(await parseError(response, "Failed to cancel order"));
+  }
+  return response.json();
+};
+
+export const riderDeleteOrder = async (orderId: string) => {
+  const response = await fetch(`${BaseURL}/orders/${orderId}/rider`, {
+    method: "DELETE",
+    headers: jsonHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(await parseError(response, "Failed to delete order"));
+  }
+  return response.json() as Promise<{ ok: boolean; message: string }>;
 };

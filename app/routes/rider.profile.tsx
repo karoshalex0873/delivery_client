@@ -3,15 +3,18 @@ import { type RiderContextData } from "./rider";
 import { Card, CardHeader, CardTitle, CardContent } from "~/components/ui/card";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
-import { Bike, Phone, MapPin, LogOut } from "lucide-react";
+import { Bike, Phone, LogOut } from "lucide-react";
 import { useClerk } from "@clerk/clerk-react";
 import { useNavigate } from "react-router";
 import { logout as logoutUser } from "~/services/auth";
+import { useEffect, useState } from "react";
 
 export default function RiderProfilePage() {
-  const { rider } = useOutletContext<RiderContextData>();
+  const { rider, handleUpdateShippingRate } = useOutletContext<RiderContextData>();
   const { signOut } = useClerk();
   const navigate = useNavigate();
+  const [costPerKm, setCostPerKm] = useState("40");
+  const [savingRate, setSavingRate] = useState(false);
   
   const handleLogout = async () => {
     await logoutUser();
@@ -21,6 +24,22 @@ export default function RiderProfilePage() {
       // Ignore if Clerk session does not exist.
     }
     navigate("/auth/signin", { replace: true });
+  };
+
+  useEffect(() => {
+    if (typeof rider?.costPerKm === "number") {
+      setCostPerKm(String(rider.costPerKm));
+    }
+  }, [rider?.costPerKm]);
+
+  const handleSaveRate = async () => {
+    const parsed = Number(costPerKm);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      return;
+    }
+    setSavingRate(true);
+    await handleUpdateShippingRate(parsed);
+    setSavingRate(false);
   };
 
   return (
@@ -55,8 +74,20 @@ export default function RiderProfilePage() {
               <div className="flex items-center gap-4 p-4 rounded-lg bg-surface border border-border">
                   <Bike className="h-5 w-5 text-muted-foreground" />
                   <div className="flex-1">
-                      <p className="text-sm font-medium">Vehicle Details</p>
-                      <p className="text-sm text-muted-foreground">Motorbike - KBA 123K</p>
+                      <p className="text-sm font-medium">Shipping Cost Per KM</p>
+                      <div className="mt-2 flex items-center gap-2">
+                        <input
+                          value={costPerKm}
+                          onChange={(event) => setCostPerKm(event.target.value)}
+                          className="input-field h-10 py-2"
+                          placeholder="40"
+                          inputMode="decimal"
+                        />
+                        <Button onClick={() => void handleSaveRate()} disabled={savingRate}>
+                          {savingRate ? "Saving..." : "Save"}
+                        </Button>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">Used to calculate delivery shipping cost.</p>
                   </div>
               </div>
            </div>

@@ -19,6 +19,7 @@ export default function RiderDashboard() {
     handleAccept,
     handlePass,
     handleAvailability,
+    handleRiderSignDelivered,
     updatingStatus,
   } = useOutletContext<RiderContextData>();
 
@@ -146,11 +147,22 @@ export default function RiderDashboard() {
                       <h4 className="font-semibold">Order #{order.id.slice(0, 8)}</h4>
                       <Badge variant="warning" className="mt-1 lowercase">{order.status.replace(/_/g, " ")}</Badge>
                     </div>
-                    <Link to={`/rider/orders/${order.id}`}>
-                      <Button variant="outline" size="sm">
-                        View Details
-                      </Button>
-                    </Link>
+                    <div className="flex gap-2">
+                      {order.status === "out_for_delivery" ? (
+                        <Button
+                          size="sm"
+                          onClick={() => handleRiderSignDelivered(order.id)}
+                          disabled={busyOrderId === order.id}
+                        >
+                          {busyOrderId === order.id ? "Signing..." : "Sign Delivered"}
+                        </Button>
+                      ) : null}
+                      <Link to={`/rider/orders/${order.id}`}>
+                        <Button variant="outline" size="sm">
+                          View Details
+                        </Button>
+                      </Link>
+                    </div>
                   </div>
                 </div>
               ))

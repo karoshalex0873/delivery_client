@@ -7,14 +7,17 @@ import {
   getRiderAssignedOrders,
   getRiderMe,
   getRiderOrderOffers,
+  riderCancelOrder,
+  riderDeleteOrder,
   passRiderOrder,
   type RiderAssignedOrder,
   type RiderOrderOffer,
   type RiderProfile,
   updateRiderAvailability,
+  updateRiderShippingRate,
   upsertRiderLocation,
 } from "../services/rider";
-import { riderSignDeliveryStart } from "../services/orders";
+import { riderSignDelivered, riderSignDeliveryStart } from "../services/orders";
 import { AppLayout, type NavItem } from "~/components/app-layout";
 import { LayoutDashboard, ShoppingBag, User } from "lucide-react";
 
@@ -29,6 +32,10 @@ export type RiderContextData = {
   handleAccept: (orderId: string) => Promise<void>;
   handlePass: (orderId: string) => Promise<void>;
   handleRiderSignDeliveryStart: (orderId: string) => Promise<void>;
+  handleRiderSignDelivered: (orderId: string) => Promise<void>;
+  handleUpdateShippingRate: (costPerKm: number) => Promise<void>;
+  handleRiderCancelOrder: (orderId: string) => Promise<void>;
+  handleRiderDeleteOrder: (orderId: string) => Promise<void>;
   loading: boolean;
   error: string | null;
   busyOrderId: string | null;
@@ -128,9 +135,28 @@ const RiderLayout = () => {
       return;
     }
 
+    const pushLocation = (latitude: number, longitude: number) => {
+      void upsertRiderLocation(latitude, longitude);
+    };
+
+    // Send a quick coarse location immediately so customer map can render fast.
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        pushLocation(position.coords.latitude, position.coords.longitude);
+      },
+      () => {
+        // Ignore; watchPosition will continue trying.
+      },
+      {
+        enableHighAccuracy: false,
+        timeout: 5000,
+        maximumAge: 60000,
+      },
+    );
+
     const watchId = navigator.geolocation.watchPosition(
       (position) => {
-        void upsertRiderLocation(position.coords.latitude, position.coords.longitude);
+        pushLocation(position.coords.latitude, position.coords.longitude);
       },
       () => {
         // Rider denied location permission.
@@ -138,7 +164,7 @@ const RiderLayout = () => {
       {
         enableHighAccuracy: true,
         timeout: 10000,
-        maximumAge: 3000,
+        maximumAge: 0,
       },
     );
 
@@ -232,6 +258,57 @@ const RiderLayout = () => {
     }
   };
 
+  const handleRiderSignDelivered = async (orderId: string) => {
+    setBusyOrderId(orderId);
+    setError(null);
+    try {
+      await riderSignDelivered(orderId);
+      const assigned = await getRiderAssignedOrders();
+      setAssignedOrders(assigned);
+    } catch (signError) {
+      setError(signError instanceof Error ? signError.message : "Failed to sign delivery completion");
+    } finally {
+      setBusyOrderId(null);
+    }
+  };
+
+  const handleUpdateShippingRate = async (costPerKm: number) => {
+    setError(null);
+    try {
+      const updated = await updateRiderShippingRate(costPerKm);
+      setRider(updated);
+    } catch (rateError) {
+      setError(rateError instanceof Error ? rateError.message : "Failed to update shipping rate");
+    }
+  };
+
+  const handleRiderCancelOrder = async (orderId: string) => {
+    setBusyOrderId(orderId);
+    setError(null);
+    try {
+      await riderCancelOrder(orderId);
+      const assigned = await getRiderAssignedOrders();
+      setAssignedOrders(assigned);
+    } catch (cancelError) {
+      setError(cancelError instanceof Error ? cancelError.message : "Failed to cancel order");
+    } finally {
+      setBusyOrderId(null);
+    }
+  };
+
+  const handleRiderDeleteOrder = async (orderId: string) => {
+    setBusyOrderId(orderId);
+    setError(null);
+    try {
+      await riderDeleteOrder(orderId);
+      setAssignedOrders((current) => current.filter((order) => order.id !== orderId));
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "Failed to delete order");
+    } finally {
+      setBusyOrderId(null);
+    }
+  };
+
   if (!authorized) return null;
 
   const navItems: NavItem[] = [
@@ -252,6 +329,10 @@ const RiderLayout = () => {
           handleAccept,
           handlePass,
           handleRiderSignDeliveryStart,
+          handleRiderSignDelivered,
+          handleUpdateShippingRate,
+          handleRiderCancelOrder,
+          handleRiderDeleteOrder,
           loading,
           error,
           busyOrderId,
