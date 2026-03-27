@@ -17,6 +17,7 @@ export default function RestaurantManage() {
   const [restaurantName, setRestaurantName] = useState(restaurant?.name ?? "");
   const [restaurantPhone, setRestaurantPhone] = useState(restaurant?.phoneNumber ?? "");
   const [restaurantDescription, setRestaurantDescription] = useState(restaurant?.description ?? "");
+  const [restaurantImageUrl, setRestaurantImageUrl] = useState(restaurant?.imageUrl ?? "");
   const [currentCoords, setCurrentCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [categoryInput, setCategoryInput] = useState("");
   const [savingLocation, setSavingLocation] = useState(false);
@@ -64,6 +65,7 @@ export default function RestaurantManage() {
     setRestaurantName(restaurant.name ?? "");
     setRestaurantPhone(restaurant.phoneNumber ?? "");
     setRestaurantDescription(restaurant.description ?? "");
+    setRestaurantImageUrl(restaurant.imageUrl ?? "");
   }, [restaurant]);
 
   const searchLocation = async (searchText?: string) => {
@@ -163,6 +165,7 @@ export default function RestaurantManage() {
         name: restaurantName.trim(),
         phoneNumber: restaurantPhone.trim(),
         description: restaurantDescription.trim() || undefined,
+        imageUrl: restaurantImageUrl.trim() || undefined,
       });
       setRestaurant(updated);
       setStatus("Restaurant details updated.");
@@ -323,6 +326,15 @@ export default function RestaurantManage() {
                   />
                 </div>
                 <div className="sm:col-span-2">
+                  <label className="text-sm font-semibold text-foreground">Restaurant image URL</label>
+                  <input
+                    value={restaurantImageUrl}
+                    onChange={(event) => setRestaurantImageUrl(event.target.value)}
+                    className="input-field mt-1"
+                    placeholder="https://...restaurant-image.jpg"
+                  />
+                </div>
+                <div className="sm:col-span-2">
                   <label className="text-sm font-semibold text-foreground">Description</label>
                   <textarea
                     value={restaurantDescription}
@@ -344,6 +356,13 @@ export default function RestaurantManage() {
               </div>
             ) : (
               <div className="mt-3 space-y-1 text-sm text-foreground">
+                {restaurant.imageUrl ? (
+                  <img
+                    src={restaurant.imageUrl}
+                    alt={restaurant.name}
+                    className="mb-2 h-28 w-full rounded-xl border border-border object-cover sm:w-72"
+                  />
+                ) : null}
                 <p><span className="font-semibold text-muted-foreground">Name:</span> {restaurant.name}</p>
                 <p><span className="font-semibold text-muted-foreground">Phone:</span> {restaurant.phoneNumber}</p>
                 <p><span className="font-semibold text-muted-foreground">Description:</span> {restaurant.description || "No description yet"}</p>

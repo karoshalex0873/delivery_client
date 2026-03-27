@@ -55,7 +55,7 @@ export default function Favorites() {
           >
             <Link to={`/customer/restaurant/${restaurant.id}`} className="block h-48 w-full overflow-hidden">
                 <img 
-                    src={fallbackRestaurantImages[index % fallbackRestaurantImages.length]} 
+                    src={restaurant.imageUrl ?? fallbackRestaurantImages[index % fallbackRestaurantImages.length]} 
                     alt={restaurant.name} 
                     className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" 
                 />

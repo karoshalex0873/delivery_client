@@ -1,14 +1,9 @@
+import { getAccessToken } from "./auth";
+
 const BaseURL = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
 
-const getToken = () => {
-  if (typeof window === "undefined") {
-    return null;
-  }
-  return localStorage.getItem("accessToken");
-};
-
 const withAuthHeaders = () => {
-  const token = getToken();
+  const token = getAccessToken();
   if (!token) {
     throw new Error("Missing access token");
   }

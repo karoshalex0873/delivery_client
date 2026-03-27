@@ -231,7 +231,7 @@ export default function CustomerDashboard() {
     const delivery = getMockDeliveryTime(restaurant.id);
     const distanceKm = getRestaurantDistanceKm(restaurant);
     const distanceLabel = distanceKm != null ? `${distanceKm.toFixed(2)} km away` : "Distance unavailable";
-    const image = fallbackRestaurantImages[index % fallbackRestaurantImages.length];
+    const image = restaurant.imageUrl ?? fallbackRestaurantImages[index % fallbackRestaurantImages.length];
     const isFavorite = favorites.includes(restaurant.id);
     const offeredCategories = [
       ...new Set(

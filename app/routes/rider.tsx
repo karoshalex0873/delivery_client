@@ -13,13 +13,15 @@ import {
   type RiderAssignedOrder,
   type RiderOrderOffer,
   type RiderProfile,
+  updateRiderActivity,
   updateRiderAvailability,
   updateRiderShippingRate,
   upsertRiderLocation,
 } from "../services/rider";
 import { riderSignDelivered, riderSignDeliveryStart } from "../services/orders";
 import { AppLayout, type NavItem } from "~/components/app-layout";
-import { LayoutDashboard, ShoppingBag, User } from "lucide-react";
+import { CheckCircle2, Home, ListChecks, Settings, ShoppingBag, Wallet, XCircle } from "lucide-react";
+import { cn } from "~/lib/utils";
 
 const BaseURL = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
 
@@ -28,8 +30,8 @@ export type RiderContextData = {
   offers: RiderOrderOffer[];
   sortedOffers: RiderOrderOffer[];
   assignedOrders: RiderAssignedOrder[];
-  handleAvailability: (status: "online" | "offline") => Promise<void>;
-  handleAccept: (orderId: string) => Promise<void>;
+  handleActivity: (availabilityStatus: "active" | "inactive") => Promise<void>;
+  handleAccept: (orderId: string) => Promise<boolean>;
   handlePass: (orderId: string) => Promise<void>;
   handleRiderSignDeliveryStart: (orderId: string) => Promise<void>;
   handleRiderSignDelivered: (orderId: string) => Promise<void>;
@@ -46,6 +48,7 @@ export const useRiderContext = () => useOutletContext<RiderContextData>();
 
 const RiderLayout = () => {
   const authorized = useRoleGuard(2);
+  const location = useLocation();
   const [rider, setRider] = useState<RiderProfile | null>(null);
   const [offers, setOffers] = useState<RiderOrderOffer[]>([]);
   const [assignedOrders, setAssignedOrders] = useState<RiderAssignedOrder[]>([]);
@@ -68,7 +71,9 @@ const RiderLayout = () => {
     const load = async () => {
       setLoading(true);
       try {
-        const [me, offersData] = await Promise.all([getRiderMe(), getRiderOrderOffers()]);
+        const me = await getRiderMe();
+        const shouldLoadOffers = me.status === "online" && me.availabilityStatus === "active";
+        const offersData = shouldLoadOffers ? await getRiderOrderOffers() : [];
         if (!isMounted) {
           return;
         }
@@ -97,6 +102,26 @@ const RiderLayout = () => {
       isMounted = false;
     };
   }, [authorized]);
+
+  useEffect(() => {
+    if (!authorized || !rider) {
+      return;
+    }
+    if (location.pathname !== "/rider") {
+      return;
+    }
+    if (rider.status === "online") {
+      return;
+    }
+
+    void updateRiderAvailability("online")
+      .then((updated) => {
+        setRider(updated);
+      })
+      .catch(() => {
+        // Keep manual toggle as fallback if auto-online fails.
+      });
+  }, [authorized, rider, location.pathname]);
 
   useEffect(() => {
     if (!authorized || !rider) {
@@ -174,20 +199,26 @@ const RiderLayout = () => {
   }, [authorized, rider]);
 
   useEffect(() => {
-    if (!authorized || !rider || rider.status !== "online") {
+    if (!authorized || !rider) {
       return;
     }
 
     let isMounted = true;
     const intervalId = window.setInterval(async () => {
       try {
-        const offersData = await getRiderOrderOffers();
+        const assigned = await getRiderAssignedOrders();
         if (isMounted) {
-          setOffers(offersData);
-          const assigned = await getRiderAssignedOrders();
+          setAssignedOrders(assigned);
+        }
+
+        const shouldLoadOffers = rider.status === "online" && rider.availabilityStatus === "active";
+        if (shouldLoadOffers) {
+          const offersData = await getRiderOrderOffers();
           if (isMounted) {
-            setAssignedOrders(assigned);
+            setOffers(offersData);
           }
+        } else if (isMounted) {
+          setOffers([]);
         }
       } catch {
         // Retry on next interval.
@@ -200,23 +231,23 @@ const RiderLayout = () => {
     };
   }, [authorized, rider]);
 
-  const handleAvailability = async (nextStatus: "online" | "offline") => {
+  const handleActivity = async (nextStatus: "active" | "inactive") => {
     setUpdatingStatus(true);
     setError(null);
     try {
-      const updated = await updateRiderAvailability(nextStatus);
+      const updated = await updateRiderActivity(nextStatus);
       setRider(updated);
-      if (nextStatus === "offline") {
+      if (nextStatus === "inactive") {
         setOffers([]);
       }
     } catch (updateError) {
-      setError(updateError instanceof Error ? updateError.message : "Failed to update rider availability");
+      setError(updateError instanceof Error ? updateError.message : "Failed to update rider activity");
     } finally {
       setUpdatingStatus(false);
     }
   };
 
-  const handleAccept = async (orderId: string) => {
+  const handleAccept = async (orderId: string): Promise<boolean> => {
     setBusyOrderId(orderId);
     setError(null);
     try {
@@ -224,8 +255,10 @@ const RiderLayout = () => {
       setOffers((current) => current.filter((offer) => offer.orderId !== orderId));
       const assigned = await getRiderAssignedOrders();
       setAssignedOrders(assigned);
+      return true;
     } catch (acceptError) {
       setError(acceptError instanceof Error ? acceptError.message : "Failed to accept order");
+      return false;
     } finally {
       setBusyOrderId(null);
     }
@@ -312,20 +345,61 @@ const RiderLayout = () => {
   if (!authorized) return null;
 
   const navItems: NavItem[] = [
-    { title: "Dashboard", href: "/rider", icon: LayoutDashboard },
+    { title: "Home", href: "/rider", icon: Home },
+    { title: "Active", href: "/rider/active-orders", icon: ListChecks },
     { title: "Orders", href: "/rider/orders", icon: ShoppingBag },
-    { title: "Profile", href: "/rider/profile", icon: User },
+    { title: "Finance", href: "/rider/finance", icon: Wallet },
+    { title: "Settings", href: "/rider/settings", icon: Settings },
   ];
 
+ const isActive = rider?.availabilityStatus === "active";
+const headerToggle = (
+  <button
+    type="button"
+    onClick={() => void handleActivity(isActive ? "inactive" : "active")}
+    disabled={updatingStatus}
+    className={cn(
+      "flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-all duration-200",
+      "disabled:cursor-not-allowed disabled:opacity-50",
+      isActive 
+        ? "border-emerald-200 bg-emerald-50 text-emerald-700" 
+        : "border-red-200 bg-red-50 text-red-700"
+    )}
+    aria-pressed={isActive}
+    aria-label={isActive ? "Set rider inactive" : "Set rider active"}
+  >
+    {updatingStatus ? (
+      <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+    ) : (
+      <>
+        {isActive ? (
+          <CheckCircle2 className="h-3.5 w-3.5" />
+        ) : (
+          <XCircle className="h-3.5 w-3.5" />
+        )}
+        <span>{isActive ? "Active" : "Inactive"}</span>
+      </>
+    )}
+  </button>
+);
+
   return (
-    <AppLayout navItems={navItems} userRole="rider">
+    <AppLayout
+      navItems={navItems}
+      userRole="rider"
+      showBottomNav
+      headerTitle={rider?.name || "Rider"}
+      headerRight={headerToggle}
+      showHeaderBorder={false}
+      showMobileMenuButton={false}
+    >
       <Outlet
         context={{
           rider,
           offers,
           sortedOffers,
           assignedOrders,
-          handleAvailability,
+          handleActivity,
           handleAccept,
           handlePass,
           handleRiderSignDeliveryStart,

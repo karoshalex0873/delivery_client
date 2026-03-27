@@ -1,4 +1,4 @@
-import { Link, NavLink, useNavigate } from "react-router";
+import { Link, NavLink, useLocation, useNavigate } from "react-router";
 import { cn } from "~/lib/utils";
 import {
   LogOut,
@@ -21,11 +21,26 @@ interface AppLayoutProps {
   children: React.ReactNode;
   navItems: NavItem[];
   userRole: string; // "customer" | "restaurant" | "rider" | "admin"
+  showBottomNav?: boolean;
+  headerTitle?: string;
+  headerRight?: React.ReactNode;
+  showHeaderBorder?: boolean;
+  showMobileMenuButton?: boolean;
 }
 
-export function AppLayout({ children, navItems, userRole }: AppLayoutProps) {
+export function AppLayout({
+  children,
+  navItems,
+  userRole,
+  showBottomNav = false,
+  headerTitle,
+  headerRight,
+  showHeaderBorder = true,
+  showMobileMenuButton = true,
+}: AppLayoutProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
   const { signOut } = useClerk();
 
   const handleLogout = async () => {
@@ -108,22 +123,60 @@ export function AppLayout({ children, navItems, userRole }: AppLayoutProps) {
       {/* Main Content */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Mobile Header */}
-        <header className="flex h-16 items-center border-b border-border bg-surface px-6 md:hidden">
-          <button
-            onClick={() => setIsMobileMenuOpen(true)}
-            className="text-foreground"
-          >
-            <MenuIcon className="h-6 w-6" />
-          </button>
-          <span className="ml-4 text-font-bold text-lg capitalize">{userRole} Portal</span>
+        <header className={cn("flex h-16 items-center bg-surface px-6 md:hidden", showHeaderBorder ? "border-b border-border" : "")}>
+          {showMobileMenuButton ? (
+            <button
+              onClick={() => setIsMobileMenuOpen(true)}
+              className="text-foreground"
+            >
+              <MenuIcon className="h-6 w-6" />
+            </button>
+          ) : null}
+          <span className={cn("text-font-bold text-lg capitalize", showMobileMenuButton ? "ml-4" : "")}>
+            {headerTitle ?? `${userRole} Portal`}
+          </span>
+          {headerRight ? <div className="ml-auto">{headerRight}</div> : null}
         </header>
 
-        <main className="flex-1 overflow-auto p-4 md:p-8">
+        {headerTitle || headerRight ? (
+          <header className={cn("hidden h-16 items-center bg-surface px-6 md:flex", showHeaderBorder ? "border-b border-border" : "")}>
+            <span className="text-lg font-semibold text-foreground">{headerTitle ?? `${userRole} Portal`}</span>
+            {headerRight ? <div className="ml-auto">{headerRight}</div> : null}
+          </header>
+        ) : null}
+
+        <main className={`flex-1 overflow-auto p-4 md:p-8 ${showBottomNav ? "pb-24 md:pb-8" : ""}`}>
           <div className="mx-auto max-w-6xl animate-fade-in">
             {children}
           </div>
         </main>
       </div>
+
+      {showBottomNav ? (
+        <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-surface pb-safe md:hidden">
+          <div
+            className="grid h-20"
+            style={{ gridTemplateColumns: `repeat(${Math.min(5, navItems.length)}, minmax(0, 1fr))` }}
+          >
+            {navItems.slice(0, 5).map((item) => {
+              const isActive = location.pathname === item.href || location.pathname.startsWith(`${item.href}/`);
+              return (
+                <NavLink
+                  key={item.href}
+                  to={item.href}
+                  className={cn(
+                    "flex flex-col items-center justify-center gap-1.5 text-[11px] font-medium transition-colors",
+                    isActive ? "text-brand-red" : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  <item.icon className="h-6 w-6" />
+                  <span>{item.title}</span>
+                </NavLink>
+              );
+            })}
+          </div>
+        </nav>
+      ) : null}
     </div>
   );
 }

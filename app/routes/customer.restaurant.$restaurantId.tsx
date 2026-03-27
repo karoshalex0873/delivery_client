@@ -110,7 +110,7 @@ export default function RestaurantDetail() {
 
       <div className="overflow-hidden rounded-3xl border border-border bg-surface shadow-sm ring-1 ring-black/5">
         <div className="relative h-64 w-full sm:h-80">
-          <img src={fallbackRestaurantImages[0]} alt={restaurant.name} className="h-full w-full object-cover" />
+          <img src={restaurant.imageUrl ?? fallbackRestaurantImages[0]} alt={restaurant.name} className="h-full w-full object-cover" />
           <div className="absolute inset-0 bg-linear-to-t from-black/60 to-transparent" />
           <div className="absolute bottom-0 left-0 w-full p-6 text-white">
             <h1 className="text-3xl font-black tracking-tight md:text-4xl">{restaurant.name}</h1>

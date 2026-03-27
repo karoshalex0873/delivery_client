@@ -1,9 +1,13 @@
+import { getAccessToken } from "./auth";
+
 const BaseURL = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
 
 export type RestaurantPayload = {
   name: string;
   address: string;
   description?: string;
+  imageUrl?: string;
+  rating?: number;
   phoneNumber: string;
   categories?: string[];
 };
@@ -38,9 +42,38 @@ export type MenuItemRecord = MenuItemPayload & {
 export type RestaurantRecord = RestaurantPayload & {
   id: string;
   userId: string;
+  imageUrl?: string | null;
+  rating?: number;
   categories?: string[];
   user?: RestaurantOwnerRecord;
   menuItems?: MenuItemRecord[];
+};
+
+export type HomeCategoryRecord = {
+  name: string;
+  description: string;
+  image: string;
+};
+
+export type HomeTopDishRecord = {
+  name: string;
+  restaurant: string;
+  price: string;
+  eta: string;
+  image: string;
+};
+
+export type HomePopularRestaurantRecord = {
+  name: string;
+  bestDish: string;
+  rating: number;
+  image: string;
+};
+
+export type PublicHomeFeedRecord = {
+  categories: HomeCategoryRecord[];
+  topDishes: HomeTopDishRecord[];
+  popularRestaurants: HomePopularRestaurantRecord[];
 };
 
 export type OrderItemRecord = {
@@ -84,15 +117,8 @@ export type RestaurantOrderUserLocationRecord = {
   } | null;
 };
 
-const getToken = () => {
-  if (typeof window === "undefined") {
-    return null;
-  }
-  return localStorage.getItem("accessToken");
-};
-
 const withAuthHeaders = () => {
-  const token = getToken();
+  const token = getAccessToken();
   if (!token) {
     throw new Error("Missing access token");
   }
@@ -318,4 +344,18 @@ export const upsertMyRestaurantLocation = async (latitude: number, longitude: nu
   }
 
   return response.json();
+};
+
+export const getPublicHomeFeed = async () => {
+  const response = await fetch(`${BaseURL}/restaurant/public/home-feed`, {
+    headers: {
+      Accept: "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(await parseError(response, "Failed to load homepage data"));
+  }
+
+  return response.json() as Promise<PublicHomeFeedRecord>;
 };

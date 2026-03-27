@@ -108,11 +108,24 @@ export const getAccessToken = () => {
   if (typeof window === "undefined") {
     return null;
   }
-  return localStorage.getItem("accessToken");
+  return sessionStorage.getItem("accessToken");
+};
+
+export const setAccessToken = (token: string, roleId?: number | null) => {
+  if (typeof window === "undefined") {
+    return;
+  }
+  sessionStorage.setItem("accessToken", token);
+  if (roleId != null) {
+    sessionStorage.setItem("roleId", `${roleId}`);
+  }
 };
 
 export const clearAccessToken = () => {
   if (typeof window !== "undefined") {
+    sessionStorage.removeItem("accessToken");
+    sessionStorage.removeItem("roleId");
+    // Cleanup legacy shared-tab auth keys if they exist from older builds.
     localStorage.removeItem("accessToken");
     localStorage.removeItem("roleId");
   }

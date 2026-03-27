@@ -1,4 +1,5 @@
 import type { RestaurantOrderRecord } from "./restaurant";
+import { getAccessToken } from "./auth";
 
 const BaseURL = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
 
@@ -17,6 +18,7 @@ export type CatalogRestaurantRecord = {
   name: string;
   address: string;
   description?: string;
+  imageUrl?: string | null;
   phoneNumber: string;
   userId: string;
   location?: {
@@ -58,6 +60,7 @@ export type CustomerOrderRecord = {
     id: string;
     name: string;
     address: string;
+    imageUrl?: string | null;
     phoneNumber: string;
   };
   rider?: {
@@ -98,15 +101,8 @@ export type ShippingQuoteRecord = {
   estimated: boolean;
 };
 
-const getToken = () => {
-  if (typeof window === "undefined") {
-    return null;
-  }
-  return localStorage.getItem("accessToken");
-};
-
 const withAuthHeaders = () => {
-  const token = getToken();
+  const token = getAccessToken();
   if (!token) {
     throw new Error("Missing access token");
   }

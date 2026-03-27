@@ -1,3 +1,5 @@
+import { getAccessToken } from "./auth";
+
 const BaseURL = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
 
 export type RiderProfile = {
@@ -5,6 +7,7 @@ export type RiderProfile = {
   name: string;
   phoneNumber: string;
   status: "online" | "offline" | string;
+  availabilityStatus: "active" | "inactive" | string;
   address: string;
   costPerKm?: number;
 };
@@ -13,6 +16,11 @@ export type RiderOrderOffer = {
   orderId: string;
   orderStatus: string;
   totalPrice: number;
+  items: Array<{
+    id: string;
+    name: string;
+    quantity: number;
+  }>;
   riderToRestaurantKm: number;
   restaurantToCustomerKm: number;
   isEstimated?: boolean;
@@ -34,6 +42,24 @@ export type RiderAssignedOrder = {
   id: string;
   status: string;
   totalPrice: number;
+  items?: Array<{
+    id: string;
+    name: string;
+    quantity: number;
+  }>;
+  riderToPickupKm?: number | null;
+  pickupToDropoffKm?: number | null;
+  riderToDropoffKm?: number | null;
+  restaurantLocation?: {
+    latitude: number;
+    longitude: number;
+    updatedAt?: string;
+  } | null;
+  customerLocation?: {
+    latitude: number;
+    longitude: number;
+    updatedAt?: string;
+  } | null;
   restaurant?: {
     id: string;
     name: string;
@@ -48,15 +74,8 @@ export type RiderAssignedOrder = {
   };
 };
 
-const getToken = () => {
-  if (typeof window === "undefined") {
-    return null;
-  }
-  return localStorage.getItem("accessToken");
-};
-
 const withAuthHeaders = () => {
-  const token = getToken();
+  const token = getAccessToken();
   if (!token) {
     throw new Error("Missing access token");
   }
@@ -106,6 +125,18 @@ export const updateRiderAvailability = async (status: "online" | "offline") => {
   });
   if (!response.ok) {
     throw new Error(await parseError(response, "Failed to update availability"));
+  }
+  return response.json() as Promise<RiderProfile>;
+};
+
+export const updateRiderActivity = async (availabilityStatus: "active" | "inactive") => {
+  const response = await fetch(`${BaseURL}/rider/me/activity`, {
+    method: "PATCH",
+    headers: jsonHeaders(),
+    body: JSON.stringify({ availabilityStatus }),
+  });
+  if (!response.ok) {
+    throw new Error(await parseError(response, "Failed to update rider activity"));
   }
   return response.json() as Promise<RiderProfile>;
 };

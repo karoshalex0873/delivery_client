@@ -1,4 +1,5 @@
 ﻿import { motion, type Variants } from "framer-motion";
+import { useEffect, useState } from "react";
 import {
   ArrowRight,
   Bike,
@@ -7,6 +8,7 @@ import {
   Utensils,
 } from "lucide-react";
 import { Link } from "react-router";
+import { getPublicHomeFeed, type HomeCategoryRecord, type HomePopularRestaurantRecord, type HomeTopDishRecord } from "~/services/restaurant";
 import {
   FaFacebookF,
   FaInstagram,
@@ -21,7 +23,7 @@ import { HomeTopDishes } from "./home-top-dishes";
 import { HomePopularRestaurants } from "./home-popular-restaurants";
 import { HomeSocialProof } from "./home-social-proof";
 
-const categories = [
+const fallbackCategories: HomeCategoryRecord[] = [
   {
     name: "Nyama Choma",
     description: "Grilled favourites from top local grills",
@@ -57,76 +59,6 @@ const categories = [
     description: "Stone-baked pizzas and creamy pasta plates",
     image:
       "https://images.unsplash.com/photo-1513104890138-7c749659a591?auto=format&fit=crop&w=900&q=80",
-  },
-];
-
-const topDishes = [
-  {
-    name: "Loaded Beef Burger",
-    restaurant: "Urban Grill",
-    price: "KSh 790",
-    eta: "25 min",
-    image:
-      "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?auto=format&fit=crop&w=900&q=80",
-  },
-  {
-    name: "Chicken Biryani Bowl",
-    restaurant: "Coast Kitchen",
-    price: "KSh 680",
-    eta: "30 min",
-    image:
-      "https://images.unsplash.com/photo-1563379091339-03246963d96c?auto=format&fit=crop&w=900&q=80",
-  },
-  {
-    name: "Tilapia and Ugali",
-    restaurant: "Lakeview Spot",
-    price: "KSh 720",
-    eta: "35 min",
-    image:
-      "https://images.unsplash.com/photo-1604908176997-431fe4ca8c7f?auto=format&fit=crop&w=900&q=80",
-  },
-  {
-    name: "Avocado Protein Bowl",
-    restaurant: "Green Table",
-    price: "KSh 640",
-    eta: "20 min",
-    image:
-      "https://images.unsplash.com/photo-1543353071-087092ec393a?auto=format&fit=crop&w=900&q=80",
-  },
-];
-
-const restaurants = [
-  {
-    name: "Java House",
-    bestDish: "Spicy Chicken Wrap",
-    rating: 4.8,
-    eta: "24-34 min",
-    image:
-      "https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=1000&q=80",
-  },
-  {
-    name: "Artcaffe",
-    bestDish: "Chicken Pesto Pasta",
-    rating: 4.7,
-    eta: "28-38 min",
-    image:
-      "https://images.unsplash.com/photo-1552566626-52f8b828add9?auto=format&fit=crop&w=1000&q=80",
-  },
-  {
-    name: "KFC Kenya",
-    bestDish: "Streetwise 2",
-    rating: 4.6,
-    eta: "22-30 min",
-    image:
-      "https://images.unsplash.com/photo-1550547660-d9450f859349?auto=format&fit=crop&w=1000&q=80",
-  },
-  {
-    name: "CJ's",
-    bestDish: "BBQ Beef Ribs",
-    rating: 4.9,
-    eta: "30-42 min",
-    image:
-      "https://images.unsplash.com/photo-1514933651103-005eec06c04b?auto=format&fit=crop&w=1000&q=80",
   },
 ];
 
@@ -169,11 +101,34 @@ const sectionReveal: Variants = {
 };
 
 export default function Home() {
+  const [topDishes, setTopDishes] = useState<HomeTopDishRecord[]>([]);
+  const [restaurants, setRestaurants] = useState<HomePopularRestaurantRecord[]>([]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    void getPublicHomeFeed()
+      .then((feed) => {
+        if (!isMounted) {
+          return;
+        }
+        setTopDishes(feed.topDishes);
+        setRestaurants(feed.popularRestaurants);
+      })
+      .catch(() => {
+        // Keep sections empty if backend feed is unavailable.
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <HomeNav />
       <HomeHero variants={sectionReveal} />
-      <HomeCategories items={categories} variants={sectionReveal} />
+      <HomeCategories items={fallbackCategories} variants={sectionReveal} />
       <HomeTopDishes items={topDishes} variants={sectionReveal} />
 
       <section className="section-container py-14">
@@ -281,3 +236,5 @@ export default function Home() {
     </div>
   );
 }
+
+

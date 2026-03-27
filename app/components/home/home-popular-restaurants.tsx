@@ -1,11 +1,10 @@
 import { motion, type Variants } from "framer-motion";
-import { MapPin, Star } from "lucide-react";
+import { Star } from "lucide-react";
 
 type Restaurant = {
   name: string;
   bestDish: string;
   rating: number;
-  eta: string;
   image: string;
 };
 
@@ -36,9 +35,6 @@ export function HomePopularRestaurants({ items, variants }: HomePopularRestauran
                   <div className="flex items-center justify-between text-sm">
                     <span className="inline-flex items-center gap-1 font-semibold text-foreground">
                       <Star className="h-4 w-4 fill-warning text-warning" /> {restaurant.rating}
-                    </span>
-                    <span className="inline-flex items-center gap-1 text-muted-foreground">
-                      <MapPin className="h-4 w-4" /> {restaurant.eta}
                     </span>
                   </div>
                 </div>

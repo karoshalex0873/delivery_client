@@ -4,7 +4,7 @@ import { Eye, EyeOff, Loader2, Mail, Lock } from "lucide-react";
 import { motion } from "framer-motion";
 import { FcGoogle } from "react-icons/fc";
 import { useSignIn, useUser } from "@clerk/clerk-react";
-import { getAccessToken, getRoleIdFromToken, isTokenExpired, signIn, signInWithGoogle } from "~/services/auth";
+import { getAccessToken, getRoleIdFromToken, isTokenExpired, setAccessToken, signIn, signInWithGoogle } from "~/services/auth";
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -31,9 +31,8 @@ export default function SignIn() {
       throw new Error("No access token received");
     }
 
-    localStorage.setItem("accessToken", token);
     const roleId = Number(data?.roleId ?? getRoleIdFromToken(token) ?? 1);
-    localStorage.setItem("roleId", `${Number.isNaN(roleId) ? 1 : roleId}`);
+    setAccessToken(token, Number.isNaN(roleId) ? 1 : roleId);
     navigate("/customer");
   };
 
