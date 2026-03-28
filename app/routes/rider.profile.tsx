@@ -1,104 +1,241 @@
-import { useOutletContext } from "react-router";
-import { type RiderContextData } from "./rider";
-import { Card, CardHeader, CardTitle, CardContent } from "~/components/ui/card";
-import { Badge } from "~/components/ui/badge";
+﻿import { useEffect, useMemo, useState } from "react";
+import { Save, User, Mail, Phone, Shield, AlertCircle, ArrowLeft } from "lucide-react";
+import { Link } from "react-router";
 import { Button } from "~/components/ui/button";
-import { Bike, Phone, LogOut } from "lucide-react";
-import { useClerk } from "@clerk/clerk-react";
-import { useNavigate } from "react-router";
-import { logout as logoutUser } from "~/services/auth";
-import { useEffect, useState } from "react";
+import { Badge } from "~/components/ui/badge";
+import { cn } from "~/lib/utils";
+import {
+  getCurrentUser,
+  updateCurrentUser,
+  type CurrentUserRecord,
+} from "~/services/auth";
+
+type ProfileForm = {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phoneNumber: string;
+};
+
+function UserAvatar({ fallback }: { fallback: string }) {
+  return (
+    <div className="relative">
+      <div className="flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-brand-red to-brand-red/70 text-2xl font-bold text-white shadow-lg">
+        {fallback}
+      </div>
+      <div className="absolute -bottom-1 -right-1 rounded-full bg-emerald-500 p-1">
+        <div className="h-2 w-2 rounded-full bg-white" />
+      </div>
+    </div>
+  );
+}
+
+const buildAvatarFallback = (user: ProfileForm) => {
+  const first = user.firstName?.charAt(0) ?? "";
+  const last = user.lastName?.charAt(0) ?? "";
+  return `${first}${last}`.toUpperCase() || "RD";
+};
 
 export default function RiderProfilePage() {
-  const { rider, handleUpdateShippingRate } = useOutletContext<RiderContextData>();
-  const { signOut } = useClerk();
-  const navigate = useNavigate();
-  const [costPerKm, setCostPerKm] = useState("40");
-  const [savingRate, setSavingRate] = useState(false);
-  
-  const handleLogout = async () => {
-    await logoutUser();
-    try {
-      await signOut();
-    } catch {
-      // Ignore if Clerk session does not exist.
-    }
-    navigate("/auth/signin", { replace: true });
-  };
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<CurrentUserRecord | null>(null);
+  const [form, setForm] = useState<ProfileForm>({
+    firstName: "",
+    lastName: "",
+    email: "",
+    phoneNumber: "",
+  });
 
   useEffect(() => {
-    if (typeof rider?.costPerKm === "number") {
-      setCostPerKm(String(rider.costPerKm));
-    }
-  }, [rider?.costPerKm]);
+    let mounted = true;
+    const load = async () => {
+      setLoading(true);
+      try {
+        const me = await getCurrentUser();
+        if (!mounted) return;
+        setCurrentUser(me);
+        setForm({
+          firstName: me.firstName ?? "",
+          lastName: me.lastName ?? "",
+          email: me.email ?? "",
+          phoneNumber: me.phoneNumber ?? "",
+        });
+        setError(null);
+      } catch (loadError) {
+        if (!mounted) return;
+        setError(loadError instanceof Error ? loadError.message : "Failed to load profile");
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
 
-  const handleSaveRate = async () => {
-    const parsed = Number(costPerKm);
-    if (!Number.isFinite(parsed) || parsed < 0) {
-      return;
-    }
-    setSavingRate(true);
-    await handleUpdateShippingRate(parsed);
-    setSavingRate(false);
+    void load();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const avatarFallback = useMemo(() => buildAvatarFallback(form), [form]);
+
+  const updateField = (key: keyof ProfileForm, value: string) => {
+    setForm((prev) => ({ ...prev, [key]: value }));
   };
 
+  const handleSave = async () => {
+    setSaving(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const updated = await updateCurrentUser({
+        firstName: form.firstName.trim(),
+        lastName: form.lastName.trim(),
+        email: form.email.trim().toLowerCase(),
+        phoneNumber: form.phoneNumber.trim() || undefined,
+      });
+      setCurrentUser(updated);
+      setForm({
+        firstName: updated.firstName ?? "",
+        lastName: updated.lastName ?? "",
+        email: updated.email ?? "",
+        phoneNumber: updated.phoneNumber ?? "",
+      });
+      setSuccess("Profile updated successfully.");
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Failed to update profile");
+      setTimeout(() => setError(null), 3000);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="text-center">
+          <div className="w-12 h-12 rounded-full border-4 border-brand-red/20 border-t-brand-red animate-spin mx-auto mb-4" />
+          <p className="text-sm text-muted-foreground">Loading profile...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      <h2 className="text-2xl font-bold tracking-tight">Rider Profile</h2>
-      
-      <Card>
-        <CardHeader className="flex flex-row items-center gap-4">
-           <div className="h-20 w-20 rounded-full bg-brand-red/10 flex items-center justify-center text-3xl font-bold text-brand-red uppercase">
-              {rider?.name?.[0] || "R"}
-           </div>
-           <div className="space-y-1">
-             <CardTitle className="text-xl">{rider?.name || "Rider"}</CardTitle>
-             <div className="flex items-center gap-2">
-                <Badge variant={rider?.status === "online" ? "success" : "secondary"}>
-                   {rider?.status || "Offline"}
-                </Badge>
-                <span className="text-sm text-muted-foreground">{rider ? "Verified Rider" : "Loading..."}</span>
-             </div>
-           </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-           <div className="grid gap-4 pt-4">
-              <div className="flex items-center gap-4 p-4 rounded-lg bg-surface border border-border">
-                  <Phone className="h-5 w-5 text-muted-foreground" />
-                  <div className="flex-1">
-                      <p className="text-sm font-medium">Contact Number</p>
-                      <p className="text-sm text-muted-foreground">{rider?.phoneNumber || "-"}</p>
-                  </div>
-              </div>
+    <div className="pb-10">     {/* Profile Header */}
+      <div className="rounded-2xl border border-border bg-linear-to-br from-surface to-surface/80 p-6 shadow-sm mb-4">
+        <div className="flex flex-col items-center text-center">
+          <UserAvatar fallback={avatarFallback} />
+          <h2 className="mt-3 text-xl font-bold text-foreground">
+            {form.firstName || form.lastName ? `${form.firstName} ${form.lastName}` : "Rider"}
+          </h2>
+          <p className="text-sm text-muted-foreground mt-1">{form.email}</p>
+          <Badge 
+            variant="outline" 
+            className={cn(
+              "mt-2 gap-1",
+              currentUser?.authProvider === "google" 
+                ? "border-blue-200 bg-blue-50 text-blue-700" 
+                : "border-emerald-200 bg-emerald-50 text-emerald-700"
+            )}
+          >
+            <Shield className="h-3 w-3" />
+            {currentUser?.authProvider === "google" ? "Google Account" : "Email Account"}
+          </Badge>
+        </div>
+      </div>
 
-              <div className="flex items-center gap-4 p-4 rounded-lg bg-surface border border-border">
-                  <Bike className="h-5 w-5 text-muted-foreground" />
-                  <div className="flex-1">
-                      <p className="text-sm font-medium">Shipping Cost Per KM</p>
-                      <div className="mt-2 flex items-center gap-2">
-                        <input
-                          value={costPerKm}
-                          onChange={(event) => setCostPerKm(event.target.value)}
-                          className="input-field h-10 py-2"
-                          placeholder="40"
-                          inputMode="decimal"
-                        />
-                        <Button onClick={() => void handleSaveRate()} disabled={savingRate}>
-                          {savingRate ? "Saving..." : "Save"}
-                        </Button>
-                      </div>
-                      <p className="mt-1 text-xs text-muted-foreground">Used to calculate delivery shipping cost.</p>
-                  </div>
-              </div>
-           </div>
+      {/* Account Information Form */}
+      <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
+        <div className="flex items-center gap-2 mb-4 pb-2 border-b border-border/50">
+          <User className="h-5 w-5 text-brand-red" />
+          <h2 className="text-base font-semibold text-foreground">Account Information</h2>
+        </div>
 
-           <div className="pt-6">
-              <Button variant="destructive" className="w-full" onClick={handleLogout}>
-                  <LogOut className="mr-2 h-4 w-4" /> Sign Out
-              </Button>
-           </div>
-        </CardContent>
-      </Card>
+        <div className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-foreground">
+                First Name
+              </label>
+              <input
+                value={form.firstName}
+                onChange={(event) => updateField("firstName", event.target.value)}
+                className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red/20 transition-all"
+                placeholder="First name"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-foreground">
+                Last Name
+              </label>
+              <input
+                value={form.lastName}
+                onChange={(event) => updateField("lastName", event.target.value)}
+                className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red/20 transition-all"
+                placeholder="Last name"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-foreground flex items-center gap-2">
+              <Mail className="h-4 w-4 text-muted-foreground" />
+              Email Address
+            </label>
+            <input
+              type="email"
+              value={form.email}
+              onChange={(event) => updateField("email", event.target.value)}
+              className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red/20 transition-all"
+              placeholder="you@example.com"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-foreground flex items-center gap-2">
+              <Phone className="h-4 w-4 text-muted-foreground" />
+              Phone Number
+            </label>
+            <input
+              value={form.phoneNumber}
+              onChange={(event) => updateField("phoneNumber", event.target.value)}
+              className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red/20 transition-all"
+              placeholder="+2547XXXXXXXX"
+            />
+            <p className="mt-1 text-[10px] text-muted-foreground">
+              Used for delivery coordination and customer contact
+            </p>
+          </div>
+        </div>
+
+        {error && (
+          <div className="mt-4 flex items-center gap-2 rounded-xl bg-red-50 p-3 text-sm text-red-700">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+        
+        {success && (
+          <div className="mt-4 flex items-center gap-2 rounded-xl bg-green-50 p-3 text-sm text-green-700">
+            <Save className="h-4 w-4 shrink-0" />
+            <span>{success}</span>
+          </div>
+        )}
+
+        <div className="mt-5">
+          <Button 
+            onClick={() => void handleSave()} 
+            disabled={saving}
+            className="w-full sm:w-auto bg-brand-red hover:bg-brand-red/90 text-white"
+          >
+            <Save className="mr-2 h-4 w-4" />
+            {saving ? "Saving..." : "Save Changes"}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

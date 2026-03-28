@@ -1,6 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Ban, Check, CheckCheck, ClipboardList, MapPin, Package, Trash2, Truck, UserCheck } from "lucide-react";
+import { 
+  Ban, 
+  Check, 
+  CheckCheck, 
+  ClipboardList, 
+  MapPin, 
+  Package, 
+  Trash2, 
+  Truck, 
+  Clock,
+  ArrowLeft,
+  ChevronRight,
+  XCircle,
+  Users,
+  Phone,
+  DollarSign
+} from "lucide-react";
 import { io, type Socket } from "socket.io-client";
 import {
   getMyOrderUserLocations,
@@ -16,6 +32,10 @@ import {
   restaurantSignDeliveryStart,
 } from "../services/orders";
 import { useRestaurantLayout } from "./restaurant";
+import { Badge } from "~/components/ui/badge";
+import { Button } from "~/components/ui/button";
+import { cn } from "~/lib/utils";
+import { Link } from "react-router";
 
 const BaseURL = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
 
@@ -36,23 +56,51 @@ const isAcceptedFlow = (status: string) =>
   );
 
 const stageFromStatus = (status: string) => {
-  if (["ready_for_pickup", "delivery_sign_restaurant", "delivery_sign_rider"].includes(status)) return 2;
-  if (["out_for_delivery", "delivery_signed_by_rider", "delivered"].includes(status)) return 3;
+  if (status === "pending") return 0;
   if (["accepted", "preparing"].includes(status)) return 1;
+  if (["ready_for_pickup"].includes(status)) return 2;
+  if (["delivery_sign_restaurant", "delivery_sign_rider", "out_for_delivery", "delivery_signed_by_rider"].includes(status)) return 3;
+  if (status === "delivered") return 4;
   return 0;
+};
+
+const getStatusColor = (status: string) => {
+  const config: Record<string, string> = {
+    pending: "bg-yellow-100 text-yellow-700 border-yellow-200",
+    accepted: "bg-blue-100 text-blue-700 border-blue-200",
+    preparing: "bg-purple-100 text-purple-700 border-purple-200",
+    ready_for_pickup: "bg-indigo-100 text-indigo-700 border-indigo-200",
+    out_for_delivery: "bg-emerald-100 text-emerald-700 border-emerald-200",
+    delivered: "bg-green-100 text-green-700 border-green-200",
+    cancelled: "bg-red-100 text-red-700 border-red-200",
+    rejected: "bg-red-100 text-red-700 border-red-200",
+  };
+  return config[status] || "bg-gray-100 text-gray-700 border-gray-200";
 };
 
 const buildActivityLogs = (status: string) => {
   const logs: string[] = [];
-  if (isAcceptedFlow(status)) logs.push("Order accepted");
+  if (status === "pending") logs.push("Waiting for restaurant acceptance");
+  if (isAcceptedFlow(status)) logs.push("Restaurant accepted order");
   if (["preparing", "ready_for_pickup", "delivery_sign_restaurant", "delivery_sign_rider", "out_for_delivery", "delivery_signed_by_rider", "delivered"].includes(status)) {
-    logs.push("Preparing started");
+    logs.push("Meal preparation in progress");
   }
   if (["ready_for_pickup", "delivery_sign_restaurant", "delivery_sign_rider", "out_for_delivery", "delivery_signed_by_rider", "delivered"].includes(status)) {
     logs.push("Ready for pickup");
+    logs.push("Waiting for nearest active rider assignment");
+  }
+  if (["delivery_sign_restaurant", "delivery_sign_rider", "out_for_delivery", "delivery_signed_by_rider", "delivered"].includes(status)) {
+    logs.push("Rider assignment confirmed");
   }
   if (["out_for_delivery", "delivery_signed_by_rider", "delivered"].includes(status)) {
+    logs.push("Pickup signatures completed");
     logs.push("Out for delivery");
+  }
+  if (["delivery_signed_by_rider", "delivered"].includes(status)) {
+    logs.push("Rider marked delivered");
+  }
+  if (status === "delivered") {
+    logs.push("Customer confirmed delivery");
   }
   return logs;
 };
@@ -64,6 +112,7 @@ const RestaurantOrders = () => {
   const [ordersError, setOrdersError] = useState<string | null>(null);
   const [actionOrderId, setActionOrderId] = useState<string | null>(null);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [mobileView, setMobileView] = useState<"list" | "details">("list");
 
   useEffect(() => {
     if (!restaurant) {
@@ -241,62 +290,320 @@ const RestaurantOrders = () => {
   }, [restaurant]);
 
   if (loading) {
-    return <p className="text-sm text-slate-500">Loading orders workspace...</p>;
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="text-center">
+          <div className="w-12 h-12 rounded-full border-4 border-brand-red/20 border-t-brand-red animate-spin mx-auto mb-4" />
+          <p className="text-sm text-muted-foreground">Loading workspace...</p>
+        </div>
+      </div>
+    );
   }
 
   if (error) {
     return (
-      <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+      <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
         {error}
-      </p>
+      </div>
     );
   }
 
   if (!restaurant) {
     return (
-      <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
-        <h2 className="text-base font-semibold text-slate-900">Create your restaurant first</h2>
-        <p className="mt-2 text-sm text-slate-500">
+      <div className="flex flex-col items-center justify-center min-h-[60vh] px-4">
+        <div className="w-20 h-20 rounded-full bg-muted/20 flex items-center justify-center mb-4">
+          <ClipboardList className="h-10 w-10 text-muted-foreground" />
+        </div>
+        <h2 className="text-xl font-semibold text-foreground mb-2">Create Your Restaurant</h2>
+        <p className="text-sm text-muted-foreground text-center mb-6">
           Orders will appear here after your restaurant profile is available.
         </p>
+        <Link to="/restaurant/settings">
+          <Button>Setup Restaurant</Button>
+        </Link>
       </div>
     );
   }
 
   if (ordersLoading) {
-    return <p className="text-sm text-slate-500">Loading restaurant orders...</p>;
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="text-center">
+          <div className="w-12 h-12 rounded-full border-4 border-brand-red/20 border-t-brand-red animate-spin mx-auto mb-4" />
+          <p className="text-sm text-muted-foreground">Loading orders...</p>
+        </div>
+      </div>
+    );
   }
 
   if (ordersError) {
     return (
-      <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+      <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
         {ordersError}
-      </p>
+      </div>
     );
   }
 
   if (orders.length === 0) {
     return (
-      <section className="rounded-2xl border border-slate-200 bg-slate-50 p-8 text-center shadow-sm">
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-slate-200 text-slate-700">
-          <ClipboardList size={24} />
+      <div className="flex flex-col items-center justify-center min-h-[60vh] px-4">
+        <div className="w-20 h-20 rounded-full bg-muted/20 flex items-center justify-center mb-4">
+          <ClipboardList className="h-10 w-10 text-muted-foreground" />
         </div>
-        <h2 className="mt-4 text-lg font-semibold text-slate-900">No orders yet</h2>
-        <p className="mt-2 text-sm text-slate-500">
+        <h2 className="text-xl font-semibold text-foreground mb-2">No Orders Yet</h2>
+        <p className="text-sm text-muted-foreground text-center mb-6">
           Incoming customer orders will appear here once people start placing them.
         </p>
-      </section>
+      </div>
     );
   }
 
+  const pendingOrders = sortedOrders.filter(o => o.status === "pending");
+  const activeOrders = sortedOrders.filter(o => isAcceptedFlow(o.status) && o.status !== "delivered");
+  const completedOrders = sortedOrders.filter(o => o.status === "delivered");
+
   const stageIcons = [
-    { key: "preparing", label: "Preparing", icon: Package },
+    { key: "accepted", label: "Accepted", icon: Check },
     { key: "ready", label: "Ready", icon: CheckCheck },
-    { key: "delivery", label: "Delivery", icon: Truck },
+    { key: "pickup", label: "Pickup", icon: Truck },
+    { key: "done", label: "Done", icon: CheckCheck },
   ];
 
+  // Mobile view: show list or details
+  if (mobileView === "details" && selectedOrder) {
+    return (
+      <div className="pb-20">
+        {/* Sticky Header */}
+        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border/50 -mt-2 -mx-4 px-4 py-3 mb-4">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setMobileView("list")}
+              className="p-1 -ml-1"
+            >
+              <ArrowLeft className="h-5 w-5 text-muted-foreground" />
+            </button>
+            <div className="flex-1">
+              <h1 className="text-lg font-semibold text-foreground">Order Details</h1>
+              <p className="text-xs text-muted-foreground font-mono">
+                #{selectedOrder.id.slice(0, 8)}
+              </p>
+            </div>
+            <Badge className={cn("capitalize", getStatusColor(selectedOrder.status))}>
+              {selectedOrder.status.replace(/_/g, " ")}
+            </Badge>
+          </div>
+        </div>
+
+        {/* Order Details Content */}
+        <div className="space-y-4">
+          {/* Customer Info */}
+          <div className="rounded-2xl border border-border bg-surface p-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full bg-brand-red/10 flex items-center justify-center shrink-0">
+                <Users className="h-5 w-5 text-brand-red" />
+              </div>
+              <div className="flex-1">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">
+                  Customer
+                </p>
+                <p className="text-base font-semibold text-foreground">
+                  {selectedOrder.user ? `${selectedOrder.user.firstName} ${selectedOrder.user.lastName}` : "Customer"}
+                </p>
+                {selectedOrder.user?.phoneNumber && (
+                  <div className="flex items-center gap-1 mt-1">
+                    <Phone className="h-3 w-3 text-muted-foreground" />
+                    <a href={`tel:${selectedOrder.user.phoneNumber}`} className="text-xs text-emerald-600">
+                      {selectedOrder.user.phoneNumber}
+                    </a>
+                  </div>
+                )}
+                <div className="flex items-center gap-1 mt-1">
+                  <MapPin className="h-3 w-3 text-muted-foreground" />
+                  <p className="text-xs text-muted-foreground">
+                    {orderUserLocations[selectedOrder.id]
+                      ? `${orderUserLocations[selectedOrder.id]?.latitude.toFixed(4)}, ${orderUserLocations[selectedOrder.id]?.longitude.toFixed(4)}`
+                      : "Location pending"}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Rider Info */}
+          <div className="rounded-2xl border border-border bg-surface p-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center shrink-0">
+                <Truck className="h-5 w-5 text-emerald-600" />
+              </div>
+              <div className="flex-1">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">
+                  Rider
+                </p>
+                {selectedOrder.rider ? (
+                  <>
+                    <p className="text-base font-semibold text-foreground">
+                      {selectedOrder.rider.name}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {selectedOrder.rider.phoneNumber}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Not assigned yet</p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Order Items */}
+          <div className="rounded-2xl border border-border bg-surface p-4">
+            <h2 className="text-sm font-semibold text-foreground mb-3">Order Items</h2>
+            <div className="space-y-2">
+              {selectedOrder.orderItems?.map((item) => (
+                <div key={item.id} className="flex items-center justify-between py-2 border-b border-border/50 last:border-0">
+                  <div className="flex-1">
+                    <span className="text-sm font-medium text-foreground">
+                      {item.menuItem?.name ?? item.menuItemId}
+                    </span>
+                    <span className="text-xs text-muted-foreground ml-2">x{item.quantity}</span>
+                  </div>
+                  <span className="text-sm font-semibold text-foreground">
+                    KES {(item.price * item.quantity).toLocaleString()}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 pt-2 border-t border-border flex justify-between">
+              <span className="text-sm font-semibold text-foreground">Total</span>
+              <span className="text-base font-bold text-foreground">
+                KES {selectedOrder.totalPrice.toLocaleString()}
+              </span>
+            </div>
+          </div>
+
+          {/* Status Controls */}
+          <div className="rounded-2xl border border-border bg-surface p-4">
+            <h2 className="text-sm font-semibold text-foreground mb-3">Order Progress</h2>
+            <p className="mb-3 text-[11px] text-muted-foreground">
+              Flow: Restaurant accepts - Auto rider assignment - Pickup signatures - Delivery done
+            </p>
+            
+            {/* Stage Indicators */}
+            <div className="flex items-center justify-between mb-4">
+              {stageIcons.map((stage, idx) => {
+                const Icon = stage.icon;
+                const currentStage = stageFromStatus(selectedOrder.status);
+                const active = idx + 1 <= currentStage;
+                return (
+                  <div key={stage.key} className="flex flex-col items-center gap-1 flex-1">
+                    <div className={cn(
+                      "w-8 h-8 rounded-full flex items-center justify-center transition-all",
+                      active ? "bg-emerald-500 text-white" : "bg-muted/20 text-muted-foreground"
+                    )}>
+                      <Icon className="h-4 w-4" />
+                    </div>
+                    <span className="text-[10px] font-medium text-muted-foreground">
+                      {stage.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Action Buttons */}
+            <div className="space-y-2">
+              {!isAcceptedFlow(selectedOrder.status) && selectedOrder.status === "pending" && (
+                <Button
+                  onClick={() => void runOrderAction(selectedOrder.id, restaurantAcceptOrder)}
+                  disabled={actionOrderId === selectedOrder.id}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700"
+                >
+                  <Check className="h-4 w-4 mr-2" />
+                  Accept Order
+                </Button>
+              )}
+              
+              {isAcceptedFlow(selectedOrder.status) && selectedOrder.status !== "delivered" && (
+                <>
+                  <Button
+                    onClick={() => void runOrderAction(selectedOrder.id, restaurantMarkOrderReady)}
+                    disabled={actionOrderId === selectedOrder.id || !["accepted", "preparing"].includes(selectedOrder.status)}
+                    className="w-full bg-indigo-600 hover:bg-indigo-700"
+                  >
+                    <CheckCheck className="h-4 w-4 mr-2" />
+                    Mark as Ready
+                  </Button>
+                  
+                  <Button
+                    onClick={() => void runOrderAction(selectedOrder.id, restaurantSignDeliveryStart)}
+                    disabled={actionOrderId === selectedOrder.id || !["ready_for_pickup", "delivery_sign_rider"].includes(selectedOrder.status)}
+                    className="w-full bg-emerald-600 hover:bg-emerald-700"
+                  >
+                    <Truck className="h-4 w-4 mr-2" />
+                    Sign Pickup
+                  </Button>
+                </>
+              )}
+
+              <p className="text-[11px] text-muted-foreground">
+                Rider: {selectedOrder.rider ? "Assigned automatically" : "Waiting for nearest active rider"}
+              </p>
+              
+              {!["delivered", "cancelled", "rejected"].includes(selectedOrder.status) && (
+                <Button
+                  variant="outline"
+                  onClick={() => void runOrderAction(selectedOrder.id, restaurantCancelOrder)}
+                  disabled={actionOrderId === selectedOrder.id}
+                  className="w-full border-red-200 text-red-600 hover:bg-red-50"
+                >
+                  <XCircle className="h-4 w-4 mr-2" />
+                  Cancel Order
+                </Button>
+              )}
+              
+              {["cancelled", "delivered", "rejected"].includes(selectedOrder.status) && (
+                <Button
+                  variant="destructive"
+                  onClick={() => void runOrderDelete(selectedOrder.id)}
+                  disabled={actionOrderId === selectedOrder.id}
+                  className="w-full"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete Order
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Activity Log */}
+          <div className="rounded-2xl border border-border bg-surface p-4">
+            <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+              <Clock className="h-4 w-4 text-muted-foreground" />
+              Activity Log
+            </h2>
+            <div className="space-y-2">
+              {buildActivityLogs(selectedOrder.status).map((entry, idx) => (
+                <div key={idx} className="flex items-start gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5" />
+                  <p className="text-xs text-muted-foreground">{entry}</p>
+                </div>
+              ))}
+              <div className="flex items-start gap-2">
+                <div className="w-1.5 h-1.5 rounded-full bg-gray-400 mt-1.5" />
+                <p className="text-xs text-muted-foreground">
+                  Order placed {getTimeAgo(selectedOrder.createdAt)}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Mobile list view or desktop view
   return (
-    <section className="space-y-4">
+    <section className="space-y-4 pb-20">
       <div>
         <h2 className="text-lg font-semibold text-foreground">Order Workflow</h2>
         <p className="text-sm text-muted-foreground">
@@ -305,90 +612,113 @@ const RestaurantOrders = () => {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[1.1fr_1fr]">
-        <div className="rounded-2xl border border-border bg-surface">
-          <div className="border-b border-border px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Incoming orders ({sortedOrders.length})
+        {/* Orders List */}
+        <div className="rounded-2xl border border-border bg-surface overflow-hidden">
+          <div className="border-b border-border px-4 py-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Orders
+              </span>
+              <Badge variant="outline" className="text-xs">
+                {sortedOrders.length} total
+              </Badge>
+            </div>
+            {pendingOrders.length > 0 && (
+              <div className="flex gap-2 mt-2">
+                <Badge variant="warning" className="text-xs">
+                  {pendingOrders.length} pending
+                </Badge>
+              </div>
+            )}
           </div>
-          <div className="divide-y divide-border">
+          
+          <div className="divide-y divide-border max-h-[60vh] overflow-y-auto">
             {sortedOrders.map((order, index) => {
               const location = orderUserLocations[order.id];
               const itemPreview = order.orderItems?.[0]?.menuItem?.name ?? "Item";
               const isSelected = selectedOrderId === order.id;
               const canDelete = ["cancelled", "delivered", "rejected"].includes(order.status);
               const canCancel = !["out_for_delivery", "delivery_signed_by_rider", "delivered", "cancelled", "rejected"].includes(order.status);
+              const statusColor = getStatusColor(order.status);
 
               return (
                 <div
                   key={order.id}
-                  className={`flex items-center gap-3 px-3 py-2.5 transition ${isSelected ? "bg-brand-red/5" : "hover:bg-surface-hover/60"}`}
-                  onClick={() => setSelectedOrderId(order.id)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      setSelectedOrderId(order.id);
+                  className={cn(
+                    "flex items-center gap-3 px-4 py-3 cursor-pointer transition-all active:scale-[0.98]",
+                    isSelected && "bg-brand-red/5 border-l-4 border-l-brand-red",
+                    !isSelected && "hover:bg-surface-hover/60"
+                  )}
+                  onClick={() => {
+                    setSelectedOrderId(order.id);
+                    if (window.innerWidth < 1024) {
+                      setMobileView("details");
                     }
                   }}
                 >
-                  <p className="w-6 shrink-0 text-sm font-black text-foreground">{index + 1}</p>
-
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="truncate text-sm font-semibold text-foreground">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <p className="text-sm font-semibold text-foreground truncate">
                         {order.user ? `${order.user.firstName} ${order.user.lastName}` : "Customer"}
                       </p>
-                      <span className="truncate text-[11px] text-muted-foreground">{itemPreview}</span>
+                      <Badge className={cn("capitalize text-[10px] px-2 py-0", statusColor)}>
+                        {order.status.replace(/_/g, " ")}
+                      </Badge>
                     </div>
-                    <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground">
-                      <span className="inline-flex items-center gap-1">
-                        <MapPin className="h-3.5 w-3.5" />
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span className="truncate max-w-[120px]">{itemPreview}</span>
+                      <span>•</span>
+                      <span>{getTimeAgo(order.createdAt)}</span>
+                    </div>
+                    <div className="flex items-center gap-1 mt-1 text-[10px] text-muted-foreground">
+                      <MapPin className="h-3 w-3" />
+                      <span className="truncate">
                         {location ? `${location.latitude.toFixed(3)}, ${location.longitude.toFixed(3)}` : "Location pending"}
                       </span>
-                      <span>{getTimeAgo(order.createdAt)}</span>
                     </div>
                   </div>
 
                   <div className="flex shrink-0 items-center gap-1">
-                    <button
-                      type="button"
-                      title="Accept order"
-                      aria-label="Accept order"
-                      disabled={actionOrderId === order.id || order.status !== "pending"}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void runOrderAction(order.id, restaurantAcceptOrder);
-                      }}
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background text-emerald-600 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      <Check className="h-4 w-4" />
-                    </button>
-                    <button
-                      type="button"
-                      title="Reject order"
-                      aria-label="Reject order"
-                      disabled={actionOrderId === order.id || !canCancel}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void runOrderAction(order.id, restaurantCancelOrder);
-                      }}
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background text-amber-600 transition hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      <Ban className="h-4 w-4" />
-                    </button>
-                    <button
-                      type="button"
-                      title="Delete order"
-                      aria-label="Delete order"
-                      disabled={actionOrderId === order.id || !canDelete}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void runOrderDelete(order.id);
-                      }}
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                    {order.status === "pending" && (
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void runOrderAction(order.id, restaurantAcceptOrder);
+                        }}
+                        disabled={actionOrderId === order.id}
+                        className="p-2 rounded-lg bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 transition disabled:opacity-40"
+                      >
+                        <Check className="h-4 w-4" />
+                      </button>
+                    )}
+                    {canCancel && (
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void runOrderAction(order.id, restaurantCancelOrder);
+                        }}
+                        disabled={actionOrderId === order.id}
+                        className="p-2 rounded-lg bg-red-500/10 text-red-600 hover:bg-red-500/20 transition disabled:opacity-40"
+                      >
+                        <XCircle className="h-4 w-4" />
+                      </button>
+                    )}
+                    {canDelete && (
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void runOrderDelete(order.id);
+                        }}
+                        disabled={actionOrderId === order.id}
+                        className="p-2 rounded-lg bg-gray-500/10 text-gray-600 hover:bg-gray-500/20 transition disabled:opacity-40"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
+                    <ChevronRight className="h-4 w-4 text-muted-foreground ml-1 lg:hidden" />
                   </div>
                 </div>
               );
@@ -396,7 +726,8 @@ const RestaurantOrders = () => {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-border bg-surface p-4">
+        {/* Order Details - Desktop only */}
+        <div className="hidden lg:block rounded-2xl border border-border bg-surface p-5">
           <AnimatePresence mode="wait">
             {!selectedOrder ? (
               <motion.p
@@ -404,9 +735,9 @@ const RestaurantOrders = () => {
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
-                className="text-sm text-muted-foreground"
+                className="text-sm text-muted-foreground text-center py-12"
               >
-                Select an order to view details.
+                Select an order to view details
               </motion.p>
             ) : !isAcceptedFlow(selectedOrder.status) ? (
               <motion.div
@@ -414,14 +745,25 @@ const RestaurantOrders = () => {
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
-                className="space-y-2"
+                className="space-y-4 text-center py-12"
               >
+                <div className="w-16 h-16 rounded-full bg-yellow-100 flex items-center justify-center mx-auto">
+                  <Clock className="h-8 w-8 text-yellow-600" />
+                </div>
                 <p className="text-sm font-semibold text-foreground">
-                  Order #{selectedOrder.id.slice(0, 8)} is awaiting action.
+                  Order #{selectedOrder.id.slice(0, 8)} is awaiting action
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  Accept the order from the list to unlock full details and workflow controls.
+                  Accept the order to unlock full details and workflow controls
                 </p>
+                <Button
+                  onClick={() => void runOrderAction(selectedOrder.id, restaurantAcceptOrder)}
+                  disabled={actionOrderId === selectedOrder.id}
+                  className="bg-emerald-600 hover:bg-emerald-700"
+                >
+                  <Check className="h-4 w-4 mr-2" />
+                  Accept Order
+                </Button>
               </motion.div>
             ) : (
               <motion.div
@@ -429,32 +771,54 @@ const RestaurantOrders = () => {
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
-                className="space-y-4"
+                className="space-y-5"
               >
-                <div className="space-y-1">
-                  <p className="text-sm font-semibold text-foreground">
-                    {selectedOrder.user
-                      ? `${selectedOrder.user.firstName} ${selectedOrder.user.lastName}`
-                      : "Customer"}
-                  </p>
-                  <p className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                    <MapPin className="h-3.5 w-3.5" />
-                    {orderUserLocations[selectedOrder.id]
-                      ? `${orderUserLocations[selectedOrder.id]?.latitude.toFixed(4)}, ${orderUserLocations[selectedOrder.id]?.longitude.toFixed(4)}`
-                      : "Customer location pending"}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Rider: {selectedOrder.rider ? `${selectedOrder.rider.name} (${selectedOrder.rider.phoneNumber})` : "Not assigned yet"}
-                  </p>
+                {/* Customer & Rider Info */}
+                <div className="grid gap-3">
+                  <div className="rounded-xl border border-border bg-background p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                      Customer
+                    </p>
+                    <p className="text-sm font-semibold text-foreground">
+                      {selectedOrder.user ? `${selectedOrder.user.firstName} ${selectedOrder.user.lastName}` : "Customer"}
+                    </p>
+                    <div className="flex items-center gap-1 mt-1">
+                      <MapPin className="h-3 w-3 text-muted-foreground" />
+                      <p className="text-xs text-muted-foreground">
+                        {orderUserLocations[selectedOrder.id]
+                          ? `${orderUserLocations[selectedOrder.id]?.latitude.toFixed(4)}, ${orderUserLocations[selectedOrder.id]?.longitude.toFixed(4)}`
+                          : "Location pending"}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="rounded-xl border border-border bg-background p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                      Rider
+                    </p>
+                    {selectedOrder.rider ? (
+                      <>
+                        <p className="text-sm font-semibold text-foreground">
+                          {selectedOrder.rider.name}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {selectedOrder.rider.phoneNumber}
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">Not assigned yet</p>
+                    )}
+                  </div>
                 </div>
 
+                {/* Order Items */}
                 <div className="rounded-xl border border-border bg-background p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
                     Order items
                   </p>
-                  <div className="mt-2 space-y-1.5 text-sm">
+                  <div className="space-y-2">
                     {selectedOrder.orderItems?.map((item) => (
-                      <div key={item.id} className="flex items-center justify-between gap-2">
+                      <div key={item.id} className="flex items-center justify-between gap-2 text-sm">
                         <span className="truncate text-foreground">
                           {item.menuItem?.name ?? item.menuItemId} x{item.quantity}
                         </span>
@@ -464,86 +828,82 @@ const RestaurantOrders = () => {
                       </div>
                     ))}
                   </div>
-                  <div className="mt-3 border-t border-border pt-2 text-sm font-bold text-foreground">
-                    Total (excluding shipping): KES {selectedOrder.totalPrice.toLocaleString()}
+                  <div className="mt-3 pt-2 border-t border-border flex justify-between text-sm font-bold text-foreground">
+                    <span>Total</span>
+                    <span>KES {selectedOrder.totalPrice.toLocaleString()}</span>
                   </div>
                 </div>
 
-                <div className="space-y-2">
+                {/* Status Controls */}
+                <div className="space-y-3">
                   <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Status control
                   </p>
                   <p className="text-[11px] text-muted-foreground">
-                    Flow: Accept order - Preparing - Ready for pickup - Assign rider - Out for delivery
+                    Flow: Restaurant accepts - Auto rider assignment - Pickup signatures - Delivery done
                   </p>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      title="Preparing"
-                      disabled
-                      className="inline-flex items-center gap-1.5 rounded-md border border-emerald-300 bg-emerald-50 px-2.5 py-2 text-xs font-semibold text-emerald-700"
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => void runOrderAction(selectedOrder.id, restaurantAcceptOrder)}
+                      disabled={actionOrderId === selectedOrder.id || selectedOrder.status !== "pending"}
+                      variant="outline"
                     >
-                      <Package className="h-4 w-4" />
-                      <span>Preparing</span>
-                    </button>
-                    <button
-                      type="button"
-                      title="Ready for pickup"
-                      disabled={actionOrderId === selectedOrder.id || !["accepted", "preparing"].includes(selectedOrder.status)}
+                      <Check className="h-4 w-4 mr-1" />
+                      Accept
+                    </Button>
+                    <Button
+                      size="sm"
                       onClick={() => void runOrderAction(selectedOrder.id, restaurantMarkOrderReady)}
-                      className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-2 text-xs font-semibold text-foreground transition hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-40"
+                      disabled={actionOrderId === selectedOrder.id || !["accepted", "preparing"].includes(selectedOrder.status)}
+                      variant="outline"
                     >
-                      <CheckCheck className="h-4 w-4" />
-                      <span>Ready</span>
-                    </button>
-                    <button
-                      type="button"
-                      title={selectedOrder.rider ? "Rider assigned" : "Assign rider (disabled until rider is picked)"}
-                      disabled={!selectedOrder.rider}
-                      className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-2 text-xs font-semibold text-foreground transition disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      <UserCheck className="h-4 w-4" />
-                      <span>Assign rider</span>
-                    </button>
-                    <button
-                      type="button"
-                      title="Out for delivery"
-                      disabled={actionOrderId === selectedOrder.id || !["ready_for_pickup", "delivery_sign_rider"].includes(selectedOrder.status)}
+                      <CheckCheck className="h-4 w-4 mr-1" />
+                      Mark Ready
+                    </Button>
+                    <Button
+                      size="sm"
                       onClick={() => void runOrderAction(selectedOrder.id, restaurantSignDeliveryStart)}
-                      className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-2 text-xs font-semibold text-foreground transition hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-40"
+                      disabled={actionOrderId === selectedOrder.id || !["ready_for_pickup", "delivery_sign_rider"].includes(selectedOrder.status)}
+                      variant="outline"
                     >
-                      <Truck className="h-4 w-4" />
-                      <span>Delivery</span>
-                    </button>
+                      <Truck className="h-4 w-4 mr-1" />
+                      Sign Pickup
+                    </Button>
                   </div>
-
-                  <div className="flex items-center gap-2 pt-1">
-                    {stageIcons.map((stage, idx) => {
-                      const Icon = stage.icon;
-                      const currentStage = stageFromStatus(selectedOrder.status);
-                      const active = idx + 1 <= currentStage;
-                      return (
-                        <div key={stage.key} className="flex items-center gap-2">
-                          <div className={`inline-flex h-7 w-7 items-center justify-center rounded-full border text-xs ${active ? "border-emerald-500 bg-emerald-50 text-emerald-700" : "border-border text-muted-foreground"}`}>
-                            <Icon className="h-3.5 w-3.5" />
-                          </div>
-                          {idx < stageIcons.length - 1 ? (
-                            <div className={`h-0 w-8 border-t-2 border-dotted ${active ? "border-emerald-500" : "border-border"}`} />
-                          ) : null}
-                        </div>
-                      );
-                    })}
-                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Rider: {selectedOrder.rider ? "Assigned automatically" : "Waiting for nearest active rider"}
+                  </p>
                 </div>
 
+                {/* Stage Indicators */}
+                <div className="flex items-center justify-between">
+                  {stageIcons.map((stage, idx) => {
+                    const Icon = stage.icon;
+                    const currentStage = stageFromStatus(selectedOrder.status);
+                    const active = idx + 1 <= currentStage;
+                    return (
+                      <div key={stage.key} className="flex items-center gap-2">
+                        <div className={`inline-flex h-8 w-8 items-center justify-center rounded-full border text-xs ${active ? "border-emerald-500 bg-emerald-50 text-emerald-700" : "border-border text-muted-foreground"}`}>
+                          <Icon className="h-4 w-4" />
+                        </div>
+                        {idx < stageIcons.length - 1 && (
+                          <div className={`h-0 w-8 border-t-2 border-dotted ${active ? "border-emerald-500" : "border-border"}`} />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Activity Log */}
                 <div className="rounded-xl border border-border bg-background p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
                     Activity log
                   </p>
-                  <div className="mt-2 space-y-1.5">
+                  <div className="space-y-1.5">
                     {buildActivityLogs(selectedOrder.status).map((entry) => (
                       <p key={entry} className="text-xs text-muted-foreground">
-                        - {entry}
+                        • {entry}
                       </p>
                     ))}
                   </div>

@@ -1,4 +1,5 @@
 import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
+import { createPortal } from "react-dom";
 import {
   createMyRestaurant,
   createRestaurantForUser,
@@ -8,6 +9,8 @@ import {
   type RestaurantRecord,
 } from "~/services/restaurant";
 import { getUsers, type UserRecord } from "~/services/users";
+import { cn } from "~/lib/utils";
+import { X, Building2, MapPin, Phone, FileText, Image, User, AlertCircle, CheckCircle2 } from "lucide-react";
 
 type RestaurantFormMode = "create" | "update";
 type RestaurantFormAudience = "admin" | "restaurant";
@@ -18,6 +21,10 @@ type CreateModelProps = {
   restaurant?: RestaurantRecord | null;
   onSaved?: (restaurant: RestaurantRecord) => void;
   triggerLabel?: string;
+  triggerClassName?: string;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  hideTrigger?: boolean;
 };
 
 type RestaurantFormState = {
@@ -25,6 +32,7 @@ type RestaurantFormState = {
   name: string;
   address: string;
   description: string;
+  imageUrl: string;
   phoneNumber: string;
 };
 
@@ -33,6 +41,7 @@ const emptyForm: RestaurantFormState = {
   name: "",
   address: "",
   description: "",
+  imageUrl: "",
   phoneNumber: "",
 };
 
@@ -41,6 +50,7 @@ const buildFormState = (restaurant?: RestaurantRecord | null): RestaurantFormSta
   name: restaurant?.name ?? "",
   address: restaurant?.address ?? "",
   description: restaurant?.description ?? "",
+  imageUrl: restaurant?.imageUrl ?? "",
   phoneNumber: restaurant?.phoneNumber ?? "",
 });
 
@@ -49,7 +59,22 @@ const formatUserLabel = (user: UserRecord) => {
   return `${fullName} - ${user.phoneNumber}`;
 };
 
-const CreateModel = ({ audience, mode, restaurant, onSaved, triggerLabel }: CreateModelProps) => {
+const isRestaurantOwner = (user: UserRecord) => {
+  const roleName = user.role?.name?.toLowerCase() ?? "";
+  return user.roleId === 3 || roleName.includes("restaurant");
+};
+
+const CreateModel = ({
+  audience,
+  mode,
+  restaurant,
+  onSaved,
+  triggerLabel,
+  triggerClassName,
+  open,
+  onOpenChange,
+  hideTrigger = false,
+}: CreateModelProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [form, setForm] = useState<RestaurantFormState>(() => buildFormState(restaurant));
   const [owners, setOwners] = useState<UserRecord[]>([]);
@@ -66,6 +91,12 @@ const CreateModel = ({ audience, mode, restaurant, onSaved, triggerLabel }: Crea
   }, [audience, mode, restaurant]);
 
   useEffect(() => {
+    if (typeof open === "boolean") {
+      setIsOpen(open);
+    }
+  }, [open]);
+
+  useEffect(() => {
     if (audience !== "admin" || mode !== "create") {
       setOwners([]);
       setIsLoadingOwners(false);
@@ -78,31 +109,34 @@ const CreateModel = ({ audience, mode, restaurant, onSaved, triggerLabel }: Crea
       setIsLoadingOwners(true);
 
       try {
-        const users = await getUsers({ role: "restaurant", available: true });
-        if (!isMounted) {
-          return;
+        let users = await getUsers({ role: "restaurant", available: true });
+        let restaurantOwners = users.filter(isRestaurantOwner);
+
+        if (restaurantOwners.length === 0) {
+          users = await getUsers({ available: true });
+          restaurantOwners = users.filter(isRestaurantOwner);
         }
 
-        setOwners(users);
+        if (restaurantOwners.length === 0) {
+          users = await getUsers();
+          restaurantOwners = users.filter(isRestaurantOwner);
+        }
+
+        if (!isMounted) return;
+        setOwners(restaurantOwners);
         setForm((current) => ({
           ...current,
-          userId: current.userId || users[0]?.id || "",
+          userId: current.userId || restaurantOwners[0]?.id || "",
         }));
       } catch (loadError) {
-        if (!isMounted) {
-          return;
-        }
-
+        if (!isMounted) return;
         setError(loadError instanceof Error ? loadError.message : "Failed to load restaurant owners");
       } finally {
-        if (isMounted) {
-          setIsLoadingOwners(false);
-        }
+        if (isMounted) setIsLoadingOwners(false);
       }
     };
 
     void loadOwners();
-
     return () => {
       isMounted = false;
     };
@@ -119,6 +153,7 @@ const CreateModel = ({ audience, mode, restaurant, onSaved, triggerLabel }: Crea
     name: form.name.trim(),
     address: form.address.trim(),
     description: form.description.trim() || undefined,
+    imageUrl: form.imageUrl.trim() || undefined,
     phoneNumber: form.phoneNumber.trim(),
   };
 
@@ -136,16 +171,10 @@ const CreateModel = ({ audience, mode, restaurant, onSaved, triggerLabel }: Crea
           userId: form.userId,
           ...payload,
         });
-
         setOwners((current) => current.filter((owner) => owner.id !== form.userId));
-        setForm({
-          ...emptyForm,
-          userId: "",
-        });
+        setForm({ ...emptyForm, userId: "" });
       } else if (audience === "admin" && mode === "update") {
-        if (!restaurant?.id) {
-          throw new Error("Restaurant id is required to update this restaurant");
-        }
+        if (!restaurant?.id) throw new Error("Restaurant id is required to update this restaurant");
         savedRestaurant = await updateRestaurantById(restaurant.id, payload);
         setForm(buildFormState(savedRestaurant));
       } else if (audience === "restaurant" && mode === "create") {
@@ -158,167 +187,266 @@ const CreateModel = ({ audience, mode, restaurant, onSaved, triggerLabel }: Crea
 
       setStatus(mode === "create" ? "Restaurant created successfully." : "Restaurant updated successfully.");
       setIsOpen(false);
+      onOpenChange?.(false);
       onSaved?.(savedRestaurant);
+      
+      setTimeout(() => setStatus(null), 3000);
     } catch (submissionError) {
       setError(
         submissionError instanceof Error
           ? submissionError.message
           : `Failed to ${mode} restaurant.`,
       );
+      setTimeout(() => setError(null), 3000);
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const showOwnerSelect = audience === "admin" && mode === "create";
-  const title = mode === "create" ? "Create restaurant" : "Update restaurant";
+  const title = mode === "create" ? "Create Restaurant" : "Update Restaurant";
   const buttonLabel = triggerLabel ?? (mode === "create" ? "Open restaurant form" : "Edit restaurant details");
   const description =
     audience === "admin"
       ? mode === "create"
-        ? "Select an available restaurant user and assign their restaurant details."
+        ? "Select a restaurant owner and fill in the details."
         : "Edit the selected restaurant profile."
       : mode === "create"
-        ? "Set up your restaurant details so you can manage your storefront."
+        ? "Set up your restaurant to start managing orders."
         : "Keep your restaurant profile up to date.";
+  const portalTarget = typeof document !== "undefined" ? document.body : null;
 
   return (
     <>
-      {status && (
-        <p className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-          {status}
-        </p>
+      {!hideTrigger && (
+        <button
+          className={cn(
+            "inline-flex items-center gap-2 rounded-xl bg-brand-red px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-brand-red-hover active:scale-[0.98]",
+            triggerClassName
+          )}
+          type="button"
+          onClick={() => {
+            setError(null);
+            setStatus(null);
+            setIsOpen(true);
+            onOpenChange?.(true);
+          }}
+        >
+          <Building2 className="h-4 w-4" />
+          {buttonLabel}
+        </button>
       )}
 
-      <button
-        className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
-        type="button"
-        onClick={() => {
-          setError(null);
-          setStatus(null);
-          setIsOpen(true);
-        }}
-      >
-        {buttonLabel}
-      </button>
-
-      {isOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
-          <div className="w-full max-w-3xl rounded-2xl border border-slate-200 bg-slate-50 p-6 shadow-2xl">
-            <div className="mb-4 flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
-                <p className="text-sm text-slate-500">{description}</p>
+      {isOpen && portalTarget
+        ? createPortal(
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-border bg-surface shadow-xl">
+            {/* Header */}
+            <div className="sticky top-0 z-10 bg-surface border-b border-border px-5 py-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+                  <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
+                </div>
+                <button
+                  className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-surface-hover hover:text-foreground"
+                  type="button"
+                  onClick={() => {
+                    setIsOpen(false);
+                    onOpenChange?.(false);
+                  }}
+                >
+                  <X className="h-5 w-5" />
+                </button>
               </div>
-              <button
-                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
-                type="button"
-                onClick={() => setIsOpen(false)}
-              >
-                Close
-              </button>
             </div>
 
-            {error && (
-              <p className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-                {error}
-              </p>
-            )}
+            {/* Body */}
+            <div className="p-5">
+              {/* Status Message */}
+              {status && (
+                <div className="mb-4 flex items-center gap-2 rounded-xl bg-success/10 p-3 text-sm text-success">
+                  <CheckCircle2 className="h-4 w-4 shrink-0" />
+                  <span>{status}</span>
+                </div>
+              )}
 
-            <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit}>
-              {showOwnerSelect ? (
-                <label className="flex flex-col gap-2 text-sm font-medium text-slate-700 md:col-span-2">
-                  Restaurant owner
-                  <select
-                    className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500"
-                    name="userId"
-                    value={form.userId}
-                    onChange={handleChange}
-                    disabled={isLoadingOwners || owners.length === 0}
-                    required
-                  >
-                    <option value="">
-                      {isLoadingOwners ? "Loading available restaurant users..." : "Select a restaurant owner"}
-                    </option>
-                    {owners.map((owner) => (
-                      <option key={owner.id} value={owner.id}>
-                        {formatUserLabel(owner)}
+              {/* Error Message */}
+              {error && (
+                <div className="mb-4 flex items-center gap-2 rounded-xl bg-error/10 p-3 text-sm text-error">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span>{error}</span>
+                </div>
+              )}
+
+              <form className="space-y-4" onSubmit={handleSubmit}>
+                {/* Owner Select - Admin Only */}
+                {showOwnerSelect && (
+                  <div>
+                    <label className="mb-1.5 flex items-center gap-2 text-sm font-medium text-foreground">
+                      <User className="h-4 w-4 text-brand-red" />
+                      Restaurant Owner
+                    </label>
+                    <select
+                      className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground outline-none transition focus:border-brand-red focus:ring-1 focus:ring-brand-red/20"
+                      name="userId"
+                      value={form.userId}
+                      onChange={handleChange}
+                      disabled={isLoadingOwners || owners.length === 0}
+                      required
+                    >
+                      <option value="">
+                        {isLoadingOwners ? "Loading available users..." : "Select a restaurant owner"}
                       </option>
-                    ))}
-                  </select>
-                </label>
-              ) : null}
+                      {owners.map((owner) => (
+                        <option key={owner.id} value={owner.id}>
+                          {formatUserLabel(owner)}
+                        </option>
+                      ))}
+                    </select>
+                    {owners.length === 0 && !isLoadingOwners && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        No available restaurant owners found. Create a user with restaurant role first.
+                      </p>
+                    )}
+                  </div>
+                )}
 
-              <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
-                Name
-                <input
-                  className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500"
-                  type="text"
-                  name="name"
-                  placeholder="Restaurant name"
-                  value={form.name}
-                  onChange={handleChange}
-                  required
-                />
-              </label>
+                {/* Restaurant Name */}
+                <div>
+                  <label className="mb-1.5 flex items-center gap-2 text-sm font-medium text-foreground">
+                    <Building2 className="h-4 w-4 text-brand-red" />
+                    Restaurant Name
+                  </label>
+                  <input
+                    className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground outline-none transition focus:border-brand-red focus:ring-1 focus:ring-brand-red/20"
+                    type="text"
+                    name="name"
+                    placeholder="e.g., Pizza Palace"
+                    value={form.name}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
 
-              <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
-                Address
-                <input
-                  className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500"
-                  type="text"
-                  name="address"
-                  placeholder="Restaurant address"
-                  value={form.address}
-                  onChange={handleChange}
-                  required
-                />
-              </label>
+                {/* Address & Phone Row */}
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1.5 flex items-center gap-2 text-sm font-medium text-foreground">
+                      <MapPin className="h-4 w-4 text-brand-red" />
+                      Address
+                    </label>
+                    <input
+                      className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground outline-none transition focus:border-brand-red focus:ring-1 focus:ring-brand-red/20"
+                      type="text"
+                      name="address"
+                      placeholder="Restaurant address"
+                      value={form.address}
+                      onChange={handleChange}
+                      required
+                    />
+                  </div>
 
-              <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
-                Phone number
-                <input
-                  className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500"
-                  type="tel"
-                  name="phoneNumber"
-                  placeholder="+254700000000"
-                  value={form.phoneNumber}
-                  onChange={handleChange}
-                  required
-                />
-              </label>
+                  <div>
+                    <label className="mb-1.5 flex items-center gap-2 text-sm font-medium text-foreground">
+                      <Phone className="h-4 w-4 text-brand-red" />
+                      Phone Number
+                    </label>
+                    <input
+                      className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground outline-none transition focus:border-brand-red focus:ring-1 focus:ring-brand-red/20"
+                      type="tel"
+                      name="phoneNumber"
+                      placeholder="+254700000000"
+                      value={form.phoneNumber}
+                      onChange={handleChange}
+                      required
+                    />
+                  </div>
+                </div>
 
-              <label className="flex flex-col gap-2 text-sm font-medium text-slate-700 md:col-span-2">
-                Description
-                <textarea
-                  className="min-h-28 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500"
-                  name="description"
-                  placeholder="Short restaurant description"
-                  value={form.description}
-                  onChange={handleChange}
-                />
-              </label>
+                {/* Description */}
+                <div>
+                  <label className="mb-1.5 flex items-center gap-2 text-sm font-medium text-foreground">
+                    <FileText className="h-4 w-4 text-brand-red" />
+                    Description
+                  </label>
+                  <textarea
+                    className="min-h-28 w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground outline-none transition focus:border-brand-red focus:ring-1 focus:ring-brand-red/20 resize-none"
+                    name="description"
+                    placeholder="Tell customers about your restaurant..."
+                    value={form.description}
+                    onChange={handleChange}
+                  />
+                </div>
 
-              <div className="md:col-span-2 flex gap-3">
-                <button
-                  className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
-                  type="submit"
-                  disabled={isSubmitting || (showOwnerSelect && (isLoadingOwners || owners.length === 0 || !form.userId))}
-                >
-                  {isSubmitting ? (mode === "create" ? "Creating..." : "Saving...") : mode === "create" ? "Create restaurant" : "Save changes"}
-                </button>
-                <button
-                  className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
-                  type="button"
-                  onClick={() => setIsOpen(false)}
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
+                {/* Image URL */}
+                <div>
+                  <label className="mb-1.5 flex items-center gap-2 text-sm font-medium text-foreground">
+                    <Image className="h-4 w-4 text-brand-red" />
+                    Image URL
+                  </label>
+                  <input
+                    className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground outline-none transition focus:border-brand-red focus:ring-1 focus:ring-brand-red/20"
+                    type="url"
+                    name="imageUrl"
+                    placeholder="https://example.com/restaurant-image.jpg"
+                    value={form.imageUrl}
+                    onChange={handleChange}
+                  />
+                  <p className="mt-1 text-[10px] text-muted-foreground">
+                    Optional. Add a photo to make your restaurant stand out.
+                  </p>
+                </div>
+
+                {/* Preview Image */}
+                {form.imageUrl && (
+                  <div className="rounded-xl border border-border overflow-hidden">
+                    <img
+                      src={form.imageUrl}
+                      alt="Restaurant preview"
+                      className="h-32 w-full object-cover"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = "none";
+                      }}
+                    />
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div className="flex gap-3 pt-2">
+                  <button
+                    className="flex-1 rounded-xl bg-brand-red px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-brand-red-hover disabled:cursor-not-allowed disabled:opacity-50"
+                    type="submit"
+                    disabled={isSubmitting || (showOwnerSelect && (isLoadingOwners || owners.length === 0 || !form.userId))}
+                  >
+                    {isSubmitting ? (
+                      <div className="flex items-center justify-center gap-2">
+                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                        <span>{mode === "create" ? "Creating..." : "Saving..."}</span>
+                      </div>
+                    ) : (
+                      <span>{mode === "create" ? "Add" : "Save Changes"}</span>
+                    )}
+                  </button>
+                  <button
+                    className="flex-1 rounded-xl border border-border bg-background px-4 py-2.5 text-sm font-medium text-foreground transition-all hover:bg-surface-hover"
+                    type="button"
+                    onClick={() => {
+                      setIsOpen(false);
+                      onOpenChange?.(false);
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
-      ) : null}
+          ,
+          portalTarget,
+        )
+        : null}
     </>
   );
 };

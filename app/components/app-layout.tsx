@@ -43,6 +43,14 @@ export function AppLayout({
   const location = useLocation();
   const { signOut } = useClerk();
 
+  const isNavItemActive = (href: string) => {
+    const isRoleRoot = href.split("/").filter(Boolean).length === 1;
+    if (isRoleRoot) {
+      return location.pathname === href;
+    }
+    return location.pathname === href || location.pathname.startsWith(`${href}/`);
+  };
+
   const handleLogout = async () => {
     await logoutUser();
     try {
@@ -54,7 +62,7 @@ export function AppLayout({
   };
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex">
+    <div className="flex h-screen overflow-hidden bg-background text-foreground">
       {/* Mobile Overlay */}
       {isMobileMenuOpen && (
         <div 
@@ -66,7 +74,7 @@ export function AppLayout({
       {/* Sidebar */}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 w-64 transform bg-surface border-r border-border transition-transform duration-200 ease-in-out md:translate-x-0 md:static md:inset-auto md:h-screen md:flex md:flex-col",
+          "fixed inset-y-0 left-0 z-50 w-64 transform border-r border-border bg-surface transition-transform duration-200 ease-in-out md:static md:translate-x-0 md:inset-auto md:h-screen md:flex md:flex-col",
           isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
@@ -85,17 +93,17 @@ export function AppLayout({
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto py-6 px-4">
+        <div className="flex-1 overflow-y-auto px-4 py-6 md:overflow-y-visible">
           <nav className="space-y-1">
             {navItems.map((item) => (
               <NavLink
                 key={item.href}
                 to={item.href}
                 onClick={() => setIsMobileMenuOpen(false)}
-                className={({ isActive }) =>
+                className={() =>
                   cn(
                     "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                    isActive
+                    isNavItemActive(item.href)
                       ? "bg-brand-red text-white"
                       : "text-muted-foreground hover:bg-surface-hover hover:text-foreground"
                   )
@@ -156,10 +164,10 @@ export function AppLayout({
         <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-surface pb-safe md:hidden">
           <div
             className="grid h-20"
-            style={{ gridTemplateColumns: `repeat(${Math.min(5, navItems.length)}, minmax(0, 1fr))` }}
+            style={{ gridTemplateColumns: `repeat(${Math.min(6, navItems.length)}, minmax(0, 1fr))` }}
           >
-            {navItems.slice(0, 5).map((item) => {
-              const isActive = location.pathname === item.href || location.pathname.startsWith(`${item.href}/`);
+            {navItems.slice(0, 6).map((item) => {
+              const isActive = isNavItemActive(item.href);
               return (
                 <NavLink
                   key={item.href}
