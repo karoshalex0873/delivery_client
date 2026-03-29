@@ -1,8 +1,9 @@
 ﻿import { useEffect, useState, type ChangeEvent } from "react";
 import { Link, useNavigate } from "react-router";
-import { Eye, EyeOff, Loader2, Mail, Lock, User } from "lucide-react";
+import { Eye, EyeOff, Loader2, Mail, User } from "lucide-react";
 import { motion } from "framer-motion";
 import { getAccessToken, isTokenExpired, signUp } from "~/services/auth";
+import { AuthDeliveryVisual } from "~/components/auth-delivery-visual";
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -209,14 +210,10 @@ export default function SignUp() {
         </motion.div>
       </div>
 
-      <div className="relative hidden items-center justify-center overflow-hidden bg-background p-12 lg:flex">
-        <div className="absolute right-0 top-0 h-125 w-125 -translate-y-1/3 translate-x-1/3 rounded-full bg-brand-red/5 blur-[100px]" />
-        <div className="absolute bottom-0 left-0 h-125 w-124 -translate-x-1/3 translate-y-1/3 rounded-full bg-warning/10 blur-[100px]" />
-        <div className="relative z-10 max-w-lg space-y-4 text-center">
-          <h2 className="h2">Customer onboarding first.</h2>
-          <p className="text-subtle">Rider and Restaurant access is reviewed through applications and admin approval for quality and trust.</p>
-        </div>
-      </div>
+      <AuthDeliveryVisual
+        title="Start today. Deliveries in motion."
+        subtitle="Create your account and follow every order from checkout to doorstep."
+      />
     </div>
   );
 }

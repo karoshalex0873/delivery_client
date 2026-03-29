@@ -1,10 +1,11 @@
 ﻿﻿import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Link, useNavigate } from "react-router";
-import { Eye, EyeOff, Loader2, Mail, Lock } from "lucide-react";
+import { Eye, EyeOff, Loader2, Mail } from "lucide-react";
 import { motion } from "framer-motion";
 import { FcGoogle } from "react-icons/fc";
 import { useSignIn, useUser } from "@clerk/clerk-react";
 import { getAccessToken, getRoleIdFromToken, isTokenExpired, setAccessToken, signIn, signInWithGoogle } from "~/services/auth";
+import { AuthDeliveryVisual } from "~/components/auth-delivery-visual";
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -249,14 +250,10 @@ export default function SignIn() {
         </motion.div>
       </div>
 
-      <div className="relative hidden items-center justify-center overflow-hidden bg-background p-12 lg:flex">
-        <div className="absolute right-0 top-0 h-125 w-125 -translate-y-1/3 translate-x-1/3 rounded-full bg-brand-red/5 blur-[100px]" />
-        <div className="absolute bottom-0 left-0 h-125 w-125 -translate-x-1/3 translate-y-1/3 rounded-full bg-warning/10 blur-[100px]" />
-        <div className="relative z-10 max-w-lg space-y-4 text-center">
-          <h2 className="h2">Fast login. Fast ordering.</h2>
-          <p className="text-subtle">Use Google or your email and password to continue quickly.</p>
-        </div>
-      </div>
+      <AuthDeliveryVisual
+        title="Fast login. Fast delivery."
+        subtitle="Sign in and track your rider with the same speed your order moves."
+      />
     </div>
   );
 }
